@@ -44,27 +44,32 @@ node {
         }
 
         stage('Authenticate Org') {
-            if (isUnix()) {
-                sh """
-                    echo 'Authenticating to Salesforce Org...'
-                    ~/sf/bin/sf org login jwt \
-                        --client-id $CONNECTED_APP_CONSUMER_KEY \
-                        --jwt-key-file $JWT_KEY_FILE \
-                        --username $SFDC_USERNAME \
-                        --alias $DEV_ORG_ALIAS \
-                        --instance-url $SFDC_HOST
-                """
-            } else {
-                bat """
-                    echo Authenticating to Salesforce Org (Windows)...
-                    sf org login jwt ^
-                        --client-id %CONNECTED_APP_CONSUMER_KEY% ^
-                        --jwt-key-file %JWT_KEY_FILE% ^
-                        --username %SFDC_USERNAME% ^
-                        --alias %DEV_ORG_ALIAS% ^
-                        --instance-url %SFDC_HOST%
-                """
+            steps {
+                script {
+                    if (isUnix()) {
+                        sh '''
+                          echo "Authenticating to Salesforce Org (Linux)..."
+                          sf org login jwt \
+                            --client-id $SF_CLIENT_ID \
+                            --jwt-key-file $SF_KEY \
+                            --username $SF_USERNAME \
+                            --alias $SF_ALIAS \
+                            --instance-url $SF_INSTANCE
+                        '''
+                    } else {
+                        bat '''
+                          echo Authenticating to Salesforce Org (Windows)...
+                          sf org login jwt ^
+                            --client-id %SF_CLIENT_ID% ^
+                            --jwt-key-file %SF_KEY% ^
+                            --username %SF_USERNAME% ^
+                            --alias %SF_ALIAS% ^
+                            --instance-url %SF_INSTANCE%
+                        '''
+                    }
+                }
             }
+
         }
 
         stage('Deploy to Dev Org') {
