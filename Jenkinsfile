@@ -2,7 +2,7 @@ node {
     // ------------------------
     // Environment Variables
     // ------------------------
-    def GIT_REPO = 'https://github.com/your-org/your-salesforce-repo.git'
+    def GIT_REPO = 'https://github.com/madhus-git/sfdcDemoReposistory.git'
     def HUB_ORG_ALIAS = 'devhub'
     def DEV_ORG_ALIAS = 'projectdemosfdc'
     def SFDC_HOST = 'https://login.salesforce.com'
