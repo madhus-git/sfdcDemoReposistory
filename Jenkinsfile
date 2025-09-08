@@ -21,27 +21,24 @@ node {
         stage('Install Salesforce CLI') {
             if (isUnix()) {
                 sh '''
-                    if ! command -v sf &> /dev/null
-                    then
-                        echo "Installing Salesforce CLI (Linux)..."
-                        curl -fsSL https://developer.salesforce.com/media/salesforce-cli/sf/channels/stable/sf-linux-x64.tar.xz -o sf.tar.xz
-                        mkdir -p ~/sf
-                        tar -xJf sf.tar.xz -C ~/sf --strip-components 1
-                        export PATH=$PATH:~/sf/bin
-                        echo "Salesforce CLI installed successfully."
-                    else
-                        echo "Salesforce CLI already installed."
+                    if ! command -v sf >/dev/null 2>&1; then
+                        echo "Salesforce CLI not found, installing..."
+                        npm install --global @salesforce/cli
+					else
+						echo "Salesforce CLI is already installed."
+						sf --version	
                     fi
                 '''
             } else {
                 bat '''
                     where sf >nul 2>nul
-                    if %errorlevel% neq 0 (
-                        echo Installing Salesforce CLI (Windows)...
+                    if %ERRORLEVEL% neq 0 (
+                        echo Salesforce CLI not found, installing...
                         npm install --global @salesforce/cli
                     ) else (
-                        echo Salesforce CLI already installed.
-                    )
+						echo Salesforce CLI is already installed.
+						sf --version
+					)
                 '''
             }
         }
