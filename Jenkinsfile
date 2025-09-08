@@ -19,7 +19,9 @@ node {
         DEV_ORG_ALIAS              = 'projectdemosfdc'
         SFDC_HOST                  = 'https://login.salesforce.com'  // or https://test.salesforce.com
     }
-
+    echo "CONNECTED_APP_CONSUMER_KEY :: " $CONNECTED_APP_CONSUMER_KEY
+	echo "SFDC_USERNAME :: " $SFDC_USERNAME
+	echo "JWT_KEY_FILE :: " $JWT_KEY_FILE
     try {
         stage('Checkout Source') {
             //git branch: 'main', url: "${GIT_REPO}"
