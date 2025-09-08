@@ -14,7 +14,8 @@ node {
 
     try {
         stage('Checkout Source') {
-            git branch: 'main', url: "${GIT_REPO}"
+            //git branch: 'main', url: "${GIT_REPO}"
+            checkout scm
         }
 
         stage('Install Salesforce CLI') {
