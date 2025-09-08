@@ -44,8 +44,8 @@ node {
         }
 
         stage('Authenticate Org') {
-            steps {
-                script {
+            //steps {
+                //script {
                     if (isUnix()) {
                         sh '''
                           echo "Authenticating to Salesforce Org (Linux)..."
@@ -67,8 +67,8 @@ node {
                             --instance-url %SFDC_HOST%
                         '''
                     }
-                }
-            }
+                //}
+            //}
 
         }
 
