@@ -20,9 +20,7 @@ node {
         SFDC_HOST                  = 'https://login.salesforce.com'  // or https://test.salesforce.com
     }
     //echo "CONNECTED_APP_CONSUMER_KEY :: " $CONNECTED_APP_CONSUMER_KEY
-	echo "Key: $CONNECTED_APP_CONSUMER_KEY"
-	echo "SFDC_USERNAME :: " $SFDC_USERNAME
-	echo "JWT_KEY_FILE :: " $JWT_KEY_FILE
+	
     try {
         stage('Checkout Source') {
             //git branch: 'main', url: "${GIT_REPO}"
@@ -55,34 +53,57 @@ node {
         }
 
         stage('Authenticate Org') {
-            //steps {
-                //script {
-                    if (isUnix()) {
-                        sh '''
-                          echo "Authenticating to Salesforce Org (Linux)..."
-                          sf org login jwt \
-                            --client-id $CONNECTED_APP_CONSUMER_KEY \
-                            --jwt-key-file $JWT_KEY_FILE \
-                            --username $SFDC_USERNAME \
-                            --alias $DEV_ORG_ALIAS \
-                            --instance-url $SFDC_HOST
-                        '''
-                    } else {
-                        bat '''
-                          echo Authenticating to Salesforce Org (Windows)...
-                          sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% --jwt-key-file %JWT_KEY_FILE% --username %SFDC_USERNAME% --alias %DEV_ORG_ALIAS% --instance-url %SFDC_HOST%
-                        '''
-                    }
-                //}
-            //}
+            withCredentials([
+                string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
+                string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
+                file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
+            ]) {
+                env.SFDC_HOST = 'https://login.salesforce.com'   // or https://test.salesforce.com
+                env.DEV_ORG_ALIAS = 'projectdemosfdc'
 
+                if (isUnix()) {
+                    sh '''
+                      echo "Authenticating to Salesforce Org (Linux)..."
+                      if [ -z "$CONNECTED_APP_CONSUMER_KEY" ]; then
+                        echo "Client ID is EMPTY"; exit 1
+                      else
+                        echo "Client ID is SET"
+                      fi
+                      sf org login jwt \
+                        --client-id $CONNECTED_APP_CONSUMER_KEY \
+                        --jwt-key-file $JWT_KEY_FILE \
+                        --username $SFDC_USERNAME \
+                        --alias $DEV_ORG_ALIAS \
+                        --instance-url $SFDC_HOST
+                    '''
+                } else {
+                    bat '''
+                      echo Authenticating to Salesforce Org (Windows)...
+                      if "%CONNECTED_APP_CONSUMER_KEY%"=="" (
+                        echo Client ID is EMPTY
+                        exit /b 1
+                      ) else (
+                        echo Client ID is SET
+                      )
+                      sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% --jwt-key-file %JWT_KEY_FILE% --username %SFDC_USERNAME% --alias %DEV_ORG_ALIAS% --instance-url %SFDC_HOST%
+                    '''
+                }
+            }
         }
 
         stage('Deploy to Dev Org') {
-            if (isUnix()) {
-                sh "~/sf/bin/sf project deploy start --target-org $DEV_ORG_ALIAS --ignore-conflicts --wait 10"
-            } else {
-                bat "sf project deploy start --target-org %DEV_ORG_ALIAS% --ignore-conflicts --wait 10"
+            withCredentials([
+                string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
+                string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
+                file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
+            ]) {
+                env.DEV_ORG_ALIAS = 'projectdemosfdc'
+
+                if (isUnix()) {
+                    sh "sf project deploy start --target-org $DEV_ORG_ALIAS --ignore-conflicts --wait 10"
+                } else {
+                    bat "sf project deploy start --target-org %DEV_ORG_ALIAS% --ignore-conflicts --wait 10"
+                }
             }
         }
 
@@ -93,4 +114,4 @@ node {
         currentBuild.result = 'FAILURE'
         throw err
     }
-}
+}      
