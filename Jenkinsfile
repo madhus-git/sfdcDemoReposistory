@@ -2,7 +2,7 @@ node {
     // ------------------------
     // Environment Variables
     // ------------------------
-    def GIT_REPO = 'https://github.com/madhus-git/sfdcDemoReposistory.git'
+    /*def GIT_REPO = 'https://github.com/madhus-git/sfdcDemoReposistory.git'
     def HUB_ORG_ALIAS = 'devhub'
     def DEV_ORG_ALIAS = 'projectdemosfdc'
     def SFDC_HOST = 'https://login.salesforce.com'
@@ -10,7 +10,15 @@ node {
     // Credentials from Jenkins
     def CONNECTED_APP_CONSUMER_KEY = '3MVG9rZjd7MXFdLge17kssqOEkJzHaiSGuSKHEPBMrZc4A67NXuRkwZiSMyK5Bbz4xh9K9hDHKKH5Ug3epFjh'
     def JWT_KEY_FILE = 'a0d4f454-6a6d-42dd-973f-ce6b35acdaf4'
-    def SFDC_USERNAME = 'kmadhu.vij380@agentforce.com'
+    def SFDC_USERNAME = 'kmadhu.vij380@agentforce.com'*/
+
+	environment {
+        CONNECTED_APP_CONSUMER_KEY = credentials('sfdc-consumer-key')
+        SFDC_USERNAME              = credentials('sfdc-username')
+        JWT_KEY_FILE               = credentials('sfdc-jwt-key')   // Secret file → Jenkins injects file path
+        DEV_ORG_ALIAS              = 'projectdemosfdc'
+        SFDC_HOST                  = 'https://login.salesforce.com'  // or https://test.salesforce.com
+    }
 
     try {
         stage('Checkout Source') {
@@ -59,12 +67,7 @@ node {
                     } else {
                         bat '''
                           echo Authenticating to Salesforce Org (Windows)...
-                          sf org login jwt ^
-                            --client-id %CONNECTED_APP_CONSUMER_KEY% ^
-                            --jwt-key-file %JWT_KEY_FILE% ^
-                            --username %SFDC_USERNAME% ^
-                            --alias %DEV_ORG_ALIAS% ^
-                            --instance-url %SFDC_HOST%
+                          sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% --jwt-key-file %JWT_KEY_FILE% --username %SFDC_USERNAME% --alias %DEV_ORG_ALIAS% --instance-url %SFDC_HOST%
                         '''
                     }
                 //}
