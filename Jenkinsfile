@@ -1,3 +1,34 @@
+// Utility Functions
+def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
+    if (isUnix()) {
+        sh """
+            echo "Authenticating to Salesforce Org: ${orgAlias}..."
+            sf org login jwt --client-id ${consumerKey} \
+                             --jwt-key-file ${jwtKeyFile} \
+                             --username ${username} \
+                             --alias ${orgAlias} \
+                             --instance-url ${sfdcHost}
+        """
+    } else {
+        bat """
+            echo Authenticating to Salesforce Org: ${orgAlias}...
+            sf org login jwt --client-id %${consumerKey}% \
+                             --jwt-key-file %${jwtKeyFile}% \
+                             --username %${username}% \
+                             --alias ${orgAlias} \
+                             --instance-url %${sfdcHost}%
+        """
+    }
+}
+
+def deployToOrg(orgAlias) {
+    if (isUnix()) {
+        sh "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+    } else {
+        bat "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+    }
+}
+
 node {
     try{
         // Global Credentials
@@ -22,41 +53,11 @@ node {
                           webhookUrl: credentials(env.SLACK_CREDENTIALS_ID))
             } */
 
-            def authenticateOrg(orgAlias) {
-                if (isUnix()) {
-                    sh """
-                        echo "Authenticating to Salesforce Org: ${orgAlias}..."
-                        sf org login jwt --client-id $CONNECTED_APP_CONSUMER_KEY \
-                                        --jwt-key-file $JWT_KEY_FILE \
-                                        --username $SFDC_USERNAME \
-                                        --alias ${orgAlias} \
-                                        --instance-url $SFDC_HOST
-                    """
-                } else {
-                    bat """
-                        echo Authenticating to Salesforce Org: ${orgAlias}...
-                        sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% \
-                                        --jwt-key-file %JWT_KEY_FILE% \
-                                        --username %SFDC_USERNAME% \
-                                        --alias ${orgAlias} \
-                                        --instance-url %SFDC_HOST%
-                    """
-                }
-            }
-
-            def deployToOrg(orgAlias) {
-                if (isUnix()) {
-                    sh "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
-                } else {
-                    bat "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
-                }
-            }
-
             // Pipeline Stages
 
             stage('Pipeline Start') {
                 echo "🚀 Salesforce CI/CD pipeline started!"
-                slackNotify("🚀 Salesforce CI/CD pipeline started for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
+                //slackNotify("🚀 Salesforce CI/CD pipeline started for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
             }
 
             // Checkout Source
@@ -92,13 +93,13 @@ node {
 
             // Authenticate to Org
             stage('Authenticate Dev Org') { 
-                authenticateOrg($DEV_ORG_ALIAS)
+                authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
                 //slackNotify("✅ Authenticated Dev Org: $DEV_ORG_ALIAS")
             }
 
             // Deploy to Dev Org
             stage('Deploy to Dev Org') { 
-                deployToOrg($DEV_ORG_ALIAS)
+                deployToOrg(DEV_ORG_ALIAS)
                 //slackNotify("✅ Deployment to Dev Org completed")
             }
 
