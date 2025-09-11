@@ -12,11 +12,11 @@ def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
     } else {
         bat """
             echo Authenticating to Salesforce Org: ${orgAlias}...
-            sf org login jwt --client-id %${consumerKey}% \
-                             --jwt-key-file %${jwtKeyFile}% \
-                             --username %${username}% \
+            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% \
+                             --jwt-key-file %JWT_KEY_FILE% \
+                             --username %SFDC_USERNAME% \
                              --alias ${orgAlias} \
-                             --instance-url %${sfdcHost}%
+                             --instance-url ${sfdcHost}
         """
     }
 }
