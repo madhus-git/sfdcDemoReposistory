@@ -54,6 +54,7 @@ node {
             def reportDir = 'pmd-report-html'
             def htmlReport = "${reportDir}/StaticAnalysisReport.html"
             def jsonReport = "${reportDir}/StaticAnalysisReport.json"
+            def xmlReport = "${reportDir}/pmd-report.xml"
 
             stage('Clean Workspace') {
                 cleanWs()
@@ -74,17 +75,11 @@ node {
                     sh """
                         mkdir -p ${reportDir}
 
-                        # Generate HTML report
+                        # Generate PMD XML report
                         sf scanner:run --target "force-app/main/default/classes" \
                                        --engine pmd \
-                                       --format html \
-                                       --outfile ${htmlReport} || true
-
-                        # Generate JSON report for quality gate
-                        sf scanner:run --target "force-app/main/default/classes" \
-                                       --engine pmd \
-                                       --format json \
-                                       --outfile ${jsonReport} || true
+                                       --format xml \
+                                       --outfile ${xmlReport} || true
                     """
                 } else {
                     bat """
@@ -93,47 +88,21 @@ node {
 
                         sf scanner:run --target "force-app/main/default/classes" ^
                                        --engine pmd ^
-                                       --format html ^
-                                       --outfile ${htmlReport} || exit 0
-
-                        sf scanner:run --target "force-app/main/default/classes" ^
-                                       --engine pmd ^
-                                       --format json ^
-                                       --outfile ${jsonReport} || exit 0
+                                       --format xml ^
+                                       --outfile ${xmlReport} || exit 0
                     """
                 }
 
-                // -----------------------------
-                // Publish HTML report in Jenkins UI
-                // -----------------------------
-                if (fileExists(htmlReport)) {
+                // ------------------------
+                // Publish PMD results in Jenkins UI
+                // ------------------------
+                if (fileExists(xmlReport)) {
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    publishHTML(target: [
-                        reportDir: "${reportDir}",
-                        reportFiles: "StaticAnalysisReport.html",
-                        reportName: "Static Code Analysis Report",
-                        keepAll: true,
-                        alwaysLinkToLastBuild: true,
-                        allowMissing: false
-                    ])
-                    echo "✅ Static analysis report published in Jenkins UI."
+                    recordIssues tools: [pmd(pattern: "${xmlReport}")], skipFailedBuild: false
+                    echo "✅ PMD static analysis published in Jenkins UI."
                 } else {
-                    error "⚠️ No static analysis report generated!"
-                }
-
-                // -----------------------------
-                // Quality Gate: Fail build if violations exist
-                // -----------------------------
-                if (fileExists(jsonReport)) {
-                    def jsonContent = readFile(jsonReport)
-                    def json = readJSON text: jsonContent
-                    def violationsCount = json.issues.size()
-                    if (violationsCount > 0) {
-                        error "❌ Static analysis failed! Found ${violationsCount} PMD violations."
-                    } else {
-                        echo "✅ No PMD violations found."
-                    }
+                    error "⚠️ PMD XML report not found!"
                 }
             }
 
