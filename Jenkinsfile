@@ -36,13 +36,14 @@ def deployToOrg(orgAlias) {
 // ------------------------
 node {
     try {
+        // ---------------------
         // Global Credentials
+        // ---------------------
         withCredentials([
             string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
-            // Global Environment Variables
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'projectdemosfdc'
 
@@ -58,7 +59,7 @@ node {
                 checkout scm
             }
 
-            stage('Install Salesforce CLI') {
+            stage('Install prerequisite') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
@@ -83,7 +84,7 @@ node {
                 }
             }
 
-            stage('Static Code Analysis - PMD') {
+            stage('Static Code Analysis') {
                 if (isUnix()) {
                     sh '''
                         echo "Running PMD analysis on Apex classes..."
@@ -114,9 +115,11 @@ node {
                         script: "grep -o '\"severity\": *\"Critical\"' pmd-report.json | wc -l",
                         returnStdout: true
                     ).trim()
+
                     if (criticalCount.toInteger() > 0) {
                         error "❌ PMD found ${criticalCount} critical violations! Check pmd-report.json for details."
                     }
+
                 } else {
                     bat '''
                         echo Running PMD analysis on Apex classes...
@@ -135,16 +138,13 @@ node {
                                        --format json ^
                                        --outfile pmd-report.json
                         if not exist pmd-report.json echo [] > pmd-report.json
+
+                        rem List files for debug
+                        dir /b pmd-report.*
                     '''
 
-                    def criticalCount = powershell(
-                        script: """
-                            if (Test-Path "pmd-report.json") {
-                                (Get-Content pmd-report.json | Select-String -Pattern '"severity": "Critical"').Count
-                            } else {
-                                0
-                            }
-                        """,
+                    def criticalCount = bat(
+                        script: 'findstr /i "severity\": \"Critical\"" pmd-report.json | find /c /v ""',
                         returnStdout: true
                     ).trim()
 
@@ -153,7 +153,7 @@ node {
                     }
                 }
 
-                // Archive both reports
+                // Archive artifacts
                 archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
             }
 
@@ -166,6 +166,7 @@ node {
             }
 
         } // end withCredentials
+
     } catch (err) {
         echo "❌ Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
