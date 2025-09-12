@@ -75,36 +75,30 @@ node {
                     sh """
                         mkdir -p ${reportDir}
 
-                        # Install Salesforce CLI scanner plugin if missing
-                        sf plugins install @salesforce/sfdx-scanner || true
-
                         # Run PMD XML report
+                        cd "${env.WORKSPACE}"
                         sf scanner:run --target "force-app/main/default/classes" \
                                        --engine pmd \
                                        --format xml \
-                                       --outfile ${xmlReport} || true
+                                       --outfile "${xmlReport}" || true
                     """
                 } else {
                     bat """
-                        if not exist ${reportDir} mkdir ${reportDir}
-                        set PATH=%APPDATA%\\npm;%PATH%
-
-                        sf plugins install @salesforce/sfdx-scanner || exit 0
-
+                        if not exist "${reportDir}" mkdir "${reportDir}"
+                        cd "%WORKSPACE%"
                         sf scanner:run --target "force-app/main/default/classes" ^
                                        --engine pmd ^
                                        --format xml ^
-                                       --outfile ${xmlReport} || exit 0
+                                       --outfile "${xmlReport}" || exit 0
                     """
                 }
 
                 // ------------------------
-                // Publish PMD XML using Warnings NG plugin
+                // Publish PMD XML in Jenkins UI
                 // ------------------------
                 if (fileExists(xmlReport)) {
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // recordIssues from Warnings NG plugin
                     recordIssues(
                         tools: [pmd(pattern: xmlReport)],
                         skipFailedBuild: false
@@ -112,7 +106,7 @@ node {
 
                     echo "✅ PMD analysis published in Jenkins UI."
                 } else {
-                    error "⚠️ PMD XML report not found!"
+                    error "⚠️ PMD XML report not found! Check Salesforce CLI and working directory."
                 }
             }
 
