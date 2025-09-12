@@ -154,5 +154,8 @@ node {
         //slackNotify("❌ Salesforce CI/CD pipeline FAILED for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})", 'danger')
         currentBuild.result = 'FAILURE'
         throw err
+    } finally {
+        // Always archive PMD report if generated
+        archiveArtifacts artifacts: 'pmd-report.txt', onlyIfSuccessful: false
     }
 }
