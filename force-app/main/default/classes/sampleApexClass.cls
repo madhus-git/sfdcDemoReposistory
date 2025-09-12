@@ -1,4 +1,4 @@
-public class SampleStaticAnalysisClass {
+public class sampleApexClass {
 
     // Unused private variable - PMD will flag this
     private String unusedVariable = 'Hello'; 
