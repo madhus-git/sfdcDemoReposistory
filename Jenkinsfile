@@ -1,4 +1,6 @@
+// ------------------------
 // Utility Functions
+// ------------------------
 def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
     if (isUnix()) {
         sh """
@@ -29,6 +31,9 @@ def deployToOrg(orgAlias) {
     }
 }
 
+// ------------------------
+// Pipeline
+// ------------------------
 node {
     try {
         // Global Credentials
@@ -37,17 +42,13 @@ node {
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
+            // Global Environment Variables
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'projectdemosfdc'
 
-            // Trigger on GitHub push
-
-            properties([
-                pipelineTriggers([
-                    githubPush()
-                ])
-            ])
-
+            // ---------------------
+            // Pipeline Stages
+            // ---------------------
             stage('Clean Workspace') {
                 cleanWs()
                 echo "Workspace cleaned successfully!"
@@ -82,27 +83,34 @@ node {
                 }
             }
 
-            // -------------------------------
-            // Static Code Analysis (PMD)
-            // -------------------------------
             stage('Static Code Analysis - PMD') {
                 if (isUnix()) {
                     sh '''
                         echo "Running PMD analysis on Apex classes..."
                         npm install --global @salesforce/sfdx-scanner
-                        # Generate both text and JSON reports
+
+                        # Generate text report
                         sf scanner run --target "force-app/main/default/classes" \
                                        --engine pmd \
                                        --format text \
                                        --outfile pmd-report.txt || true
 
+                        # Generate JSON report
                         sf scanner run --target "force-app/main/default/classes" \
                                        --engine pmd \
                                        --format json \
                                        --outfile pmd-report.json || true
+
+                        # Ensure JSON file exists
+                        if [ ! -f pmd-report.json ]; then
+                            echo "[]" > pmd-report.json
+                        fi
                     '''
-                    // Fail only on critical violations in JSON
-                    def criticalCount = sh(script: "grep -o '\"severity\": *\"Critical\"' pmd-report.json | wc -l", returnStdout: true).trim()
+
+                    def criticalCount = sh(
+                        script: "grep -o '\"severity\": *\"Critical\"' pmd-report.json | wc -l",
+                        returnStdout: true
+                    ).trim()
                     if (criticalCount.toInteger() > 0) {
                         error "❌ PMD found ${criticalCount} critical violations! Check pmd-report.json for details."
                     }
@@ -110,40 +118,50 @@ node {
                     bat '''
                         echo Running PMD analysis on Apex classes...
                         npm install --global @salesforce/sfdx-scanner
-                        rem Generate both text and JSON reports
+
+                        rem Generate text report
                         sf scanner run --target "force-app\\main\\default\\classes" ^
                                        --engine pmd ^
                                        --format text ^
                                        --outfile pmd-report.txt || exit /b 0
 
+                        rem Generate JSON report
                         sf scanner run --target "force-app\\main\\default\\classes" ^
                                        --engine pmd ^
                                        --format json ^
                                        --outfile pmd-report.json || exit /b 0
+
+                        rem Ensure JSON file exists
+                        if not exist pmd-report.json echo [] > pmd-report.json
                     '''
-                    // Fail only on critical violations
-                    def criticalCount = bat(script: 'findstr /i \\"severity\\":\\"Critical\\" pmd-report.json | find /c /v ""', returnStdout: true).trim()
+
+                    def criticalCount = bat(
+                        script: 'findstr /i "severity\":\"Critical\"" pmd-report.json | find /c /v ""',
+                        returnStdout: true
+                    ).trim()
                     if (criticalCount.isInteger() && criticalCount.toInteger() > 0) {
                         error "❌ PMD found ${criticalCount} critical violations! Check pmd-report.json for details."
                     }
                 }
 
-                // Archive reports
+                // Archive both reports
                 archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
             }
 
-            stage('Authenticate Org') { 
+            stage('Authenticate Org') {
                 authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
             }
 
-            stage('Deploy to Org') { 
+            stage('Deploy to Org') {
                 deployToOrg(DEV_ORG_ALIAS)
             }
 
-        } // end of withCredentials
+        } // end withCredentials
     } catch (err) {
         echo "❌ Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
         throw err
+    } finally {
+        archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
     }
 }
