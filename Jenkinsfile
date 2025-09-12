@@ -41,6 +41,7 @@ node {
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
+
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'dev'
             def reportDir = 'pmd-report-html'
@@ -84,13 +85,12 @@ node {
 
                 if (isUnix()) {
                     sh """
-                        # Clean and recreate report folder
                         rm -rf "${reportDir}" || true
                         mkdir -p "${reportDir}"
 
                         npm install --global @salesforce/sfdx-scanner
 
-                        # Generate PMD reports
+                        # Generate reports
                         sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt" || echo "No violations found" > "pmd-report.txt"
                         sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "pmd-report.json" || echo "[]" > "pmd-report.json"
 
@@ -100,7 +100,6 @@ node {
                         # Ensure index.html exists
                         [ ! -f "${reportDir}/index.html" ] && echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}/index.html"
 
-                        echo "Listing generated files..."
                         ls -l pmd-report.*
                         ls -l "${reportDir}"
                     """
@@ -113,13 +112,12 @@ node {
 
                 } else {
                     bat """
-                        REM Clean and recreate report folder
                         if exist "${reportDir}" rmdir /s /q "${reportDir}"
                         mkdir "${reportDir}"
 
                         npm install --global @salesforce/sfdx-scanner
 
-                        REM Run scanner using npx to avoid PATH issues
+                        REM Run PMD scanner using npx
                         npx sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt"
                         if not exist "pmd-report.txt" echo "No violations found" > "pmd-report.txt"
 
@@ -132,12 +130,11 @@ node {
                         REM Ensure index.html exists
                         if not exist "${reportDir}\\index.html" echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}\\index.html"
 
-                        REM Small delay to ensure files are fully written
-                        timeout /t 2
-
-                        echo Listing generated files...
+                        REM Confirm files
                         dir /b pmd-report.*
                         dir /b ${reportDir}
+
+                        timeout /t 2
                     """
 
                     def criticalCount = powershell(script: """
@@ -151,19 +148,16 @@ node {
                     }
                 }
 
-                // Archive artifacts
                 archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
 
-                // Publish HTML report
                 publishHTML([
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
                     keepAll: true,
                     reportDir: reportDir,
                     reportFiles: 'index.html',
-                    reportName: "Static_Analysis_Report"
+                    reportName: "PMD Static Analysis Report"
                 ])
-
                 echo "✅ PMD analysis completed. HTML report published."
             }
 
