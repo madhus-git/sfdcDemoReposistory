@@ -71,22 +71,47 @@ node {
     if (isUnix()) {
         sh """
             mkdir -p ${reportDir}
-            npm install --global @salesforce/sfdx-scanner
-            sfdx scanner:run --target force-app --engine pmd,eslint \
-                             --format html \
-                             --outfile ${reportDir}/StaticAnalysisReport.html || true
+            npm install --global @salesforce/cli @salesforce/sfdx-scanner
+
+            # Detect CLI (sfdx or sf)
+            if command -v sfdx >/dev/null 2>&1; then
+                echo "Using sfdx CLI..."
+                sfdx scanner:run --target "force-app/main/default/classes" \
+                                 --engine pmd \
+                                 --format html \
+                                 --outfile ${reportDir}/StaticAnalysisReport.html || true
+            else
+                echo "Using sf CLI..."
+                sf plugins install @salesforce/sfdx-scanner || true
+                sf scanner:run --target "force-app/main/default/classes" \
+                               --engine pmd \
+                               --format html \
+                               --outfile ${reportDir}/StaticAnalysisReport.html || true
+            fi
         """
     } else {
         bat """
             if not exist ${reportDir} mkdir ${reportDir}
-            npm install --global @salesforce/sfdx-scanner
-            sfdx scanner:run --target force-app --engine pmd,eslint ^
-                             --format html ^
-                             --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
+            npm install --global @salesforce/cli @salesforce/sfdx-scanner
+
+            where sfdx >nul 2>nul
+            if %ERRORLEVEL%==0 (
+                echo Using sfdx CLI...
+                sfdx scanner:run --target "force-app/main/default/classes" ^
+                                 --engine pmd ^
+                                 --format html ^
+                                 --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
+            ) else (
+                echo Using sf CLI...
+                sf plugins install @salesforce/sfdx-scanner || exit 0
+                sf scanner:run --target "force-app/main/default/classes" ^
+                               --engine pmd ^
+                               --format html ^
+                               --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
+            )
         """
     }
 
-    // Archive and publish report
     if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
         archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
@@ -103,6 +128,7 @@ node {
         echo "⚠️ No static analysis report generated!"
     }
 }
+
 
 
 
