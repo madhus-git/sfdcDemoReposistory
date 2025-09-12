@@ -68,51 +68,39 @@ node {
             stage('Static Code Analysis') {
     echo "🔎 Running Static Code Analysis..."
 
+    // Directory to store report
+    def reportDir = 'pmd-report-html'
+
     if (isUnix()) {
         sh """
             mkdir -p ${reportDir}
-            npm install --global @salesforce/cli @salesforce/sfdx-scanner
-
-            # Detect CLI (sfdx or sf)
-            if command -v sfdx >/dev/null 2>&1; then
-                echo "Using sfdx CLI..."
-                sfdx scanner:run --target "force-app/main/default/classes" \
-                                 --engine pmd \
-                                 --format html \
-                                 --outfile ${reportDir}/StaticAnalysisReport.html || true
-            else
-                echo "Using sf CLI..."
-                sf plugins install @salesforce/sfdx-scanner || true
-                sf scanner:run --target "force-app/main/default/classes" \
-                               --engine pmd \
-                               --format html \
-                               --outfile ${reportDir}/StaticAnalysisReport.html || true
-            fi
+            echo "Using sf CLI to run static code analysis..."
+            
+            # Run Salesforce scanner
+            sf scanner:run --target "force-app/main/default/classes" \
+                           --engine pmd \
+                           --format html \
+                           --outfile ${reportDir}/StaticAnalysisReport.html || true
         """
     } else {
         bat """
             if not exist ${reportDir} mkdir ${reportDir}
-            npm install --global @salesforce/cli @salesforce/sfdx-scanner
+            echo Using sf CLI to run static code analysis...
 
-            where sfdx >nul 2>nul
-            if %ERRORLEVEL%==0 (
-                echo Using sfdx CLI...
-                sfdx scanner:run --target "force-app/main/default/classes" ^
-                                 --engine pmd ^
-                                 --format html ^
-                                 --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
-            ) else (
-                echo Using sf CLI...
-                sf plugins install @salesforce/sfdx-scanner || exit 0
-                sf scanner:run --target "force-app/main/default/classes" ^
-                               --engine pmd ^
-                               --format html ^
-                               --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
-            )
+            # Make sure sf CLI is in PATH for Jenkins
+            set PATH=%APPDATA%\\npm;%PATH%
+
+            sf scanner:run --target "force-app/main/default/classes" ^
+                           --engine pmd ^
+                           --format html ^
+                           --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
         """
     }
 
+    // Check if report exists before archiving and publishing
     if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
+        echo "✅ Static analysis report generated!"
+
         archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
         publishHTML(target: [
@@ -125,9 +113,10 @@ node {
         ])
         echo "✅ Static analysis report published in Jenkins UI."
     } else {
-        echo "⚠️ No static analysis report generated!"
+        error "⚠️ No static analysis report generated! Please check sf CLI installation and PATH."
     }
 }
+
 
 
 
