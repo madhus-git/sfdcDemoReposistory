@@ -36,9 +36,6 @@ def deployToOrg(orgAlias) {
 // ------------------------
 node {
     try {
-        // ---------------------
-        // Global Credentials
-        // ---------------------
         withCredentials([
             string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
@@ -47,11 +44,8 @@ node {
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'dev'
             def workspace = pwd()
-            def reportDir = "${workspace}/pmd-report-html"
+            def reportDir = isUnix() ? "${workspace}/pmd-report-html" : "${workspace}\\pmd-report-html"
 
-            // ---------------------
-            // Pipeline Stages
-            // ---------------------
             stage('Clean Workspace') {
                 cleanWs()
                 echo "✅ Workspace cleaned successfully!"
@@ -105,14 +99,16 @@ node {
                         ls -l "${workspace}/pmd-report.*"
                         ls -l "${reportDir}"
                     """
+
                     def criticalCount = sh(script: "grep -o '\"severity\": *\"Critical\"' ${workspace}/pmd-report.json | wc -l", returnStdout: true).trim()
                     echo "Critical PMD violations found: ${criticalCount}"
                     if (criticalCount.toInteger() > 0) {
                         error "❌ PMD found ${criticalCount} critical violations!"
                     }
+
                 } else {
                     bat """
-                        mkdir "${reportDir}"
+                        if not exist "${reportDir}" mkdir "${reportDir}"
                         npm install --global @salesforce/sfdx-scanner
 
                         echo Generating PMD reports...
@@ -125,10 +121,13 @@ node {
                         echo Generating HTML report...
                         sf scanner report --input "${workspace}\\pmd-report.json" --format html --output "${reportDir}\\index.html"
 
+                        if not exist "${reportDir}\\index.html" echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}\\index.html"
+
                         echo Listing generated files...
                         dir /b "${workspace}\\pmd-report.*"
                         dir /b "${reportDir}"
                     """
+
                     def criticalCount = powershell(script: """
                         if (Test-Path "${workspace}\\pmd-report.json") {
                             (Get-Content "${workspace}\\pmd-report.json" | ConvertFrom-Json | Where-Object { \$_.severity -eq 'Critical' }).Count
@@ -148,7 +147,7 @@ node {
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
                     keepAll: true,
-                    reportDir: "${reportDir}",
+                    reportDir: reportDir,
                     reportFiles: 'index.html',
                     reportName: "PMD Static Analysis Report"
                 ])
@@ -163,8 +162,7 @@ node {
             stage('Deploy to Dev Org') {
                 deployToOrg(DEV_ORG_ALIAS)
             }
-
-        } // end withCredentials
+        }
 
     } catch (err) {
         echo "❌ Pipeline failed: ${err}"
