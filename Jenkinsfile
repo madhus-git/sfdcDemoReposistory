@@ -86,14 +86,24 @@ node {
         """
     }
 
-    // Archive only if report exists
+    // Archive and publish report
     if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
         archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
-        echo "✅ Static analysis report archived."
+
+        publishHTML(target: [
+            reportDir: "${reportDir}",
+            reportFiles: "StaticAnalysisReport.html",
+            reportName: "Static Code Analysis Report",
+            keepAll: true,
+            alwaysLinkToLastBuild: true,
+            allowMissing: false
+        ])
+        echo "✅ Static analysis report published in Jenkins UI."
     } else {
         echo "⚠️ No static analysis report generated!"
     }
 }
+
 
 
             /*stage('Authenticate Dev Org') {
