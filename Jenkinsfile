@@ -70,14 +70,13 @@ node {
                 echo "Running PMD static code analysis on Apex classes..."
                 if (isUnix()) {
                     sh '''
-                        # Install PMD if not present
                         if [ ! -d "pmd-bin" ]; then
                             echo "Downloading PMD..."
                             wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip -O pmd.zip
                             unzip -q pmd.zip
                             mv pmd-bin-7.0.0 pmd-bin
                         fi
-                        
+
                         ./pmd-bin/bin/pmd check \
                             -d force-app/main/default/classes \
                             -R category/apex/design.xml \
@@ -95,6 +94,7 @@ node {
                             ren "%WORKSPACE%\\pmd-bin-7.0.0" pmd-bin
                         )
 
+                        echo Running PMD Analysis...
                         call "%WORKSPACE%\\pmd-bin\\bin\\pmd.bat" check ^
                             -d "%WORKSPACE%\\force-app\\main\\default\\classes" ^
                             -R category/apex/design.xml ^
@@ -143,6 +143,10 @@ node {
                 //slackNotify("✅ Deployment to Dev Org completed")
             }
 
+            stage('Clean Workspace') {
+                cleanWs()
+                echo "Workspace cleaned successfully!"
+            }
             //Pipeline Complete
             /*stage('Pipeline Complete') {
                 echo "🎉 Salesforce CI/CD pipeline completed successfully!"
