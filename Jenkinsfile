@@ -12,10 +12,10 @@ def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
     } else {
         bat """
             echo Authenticating to Salesforce Org: ${orgAlias}...
-            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% \
-                             --jwt-key-file %JWT_KEY_FILE% \
-                             --username %SFDC_USERNAME% \
-                             --alias ${orgAlias} \
+            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^
+                             --jwt-key-file %JWT_KEY_FILE% ^
+                             --username %SFDC_USERNAME% ^
+                             --alias ${orgAlias} ^
                              --instance-url ${sfdcHost}
         """
     }
@@ -30,7 +30,7 @@ def deployToOrg(orgAlias) {
 }
 
 node {
-    try{
+    try {
         // Global Credentials
         withCredentials([
             string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
@@ -41,38 +41,26 @@ node {
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'projectdemosfdc'
 
-            // Slack channel and webhook (replace with your channel)
-            /*env.SLACK_CHANNEL = '#devops-alerts'
-            env.SLACK_CREDENTIALS_ID = 'slack-webhook-url' 
-
-            // Utility Functions
-            def slackNotify(message, color = 'good') {
-                slackSend(channel: env.SLACK_CHANNEL, 
-                          color: color, 
-                          message: message, 
-                          webhookUrl: credentials(env.SLACK_CREDENTIALS_ID))
-            } */
-
+            // ---------------------
             // Pipeline Stages
+            // ---------------------
 
-            /*stage('Pipeline Start') {
-                echo "🚀 Salesforce CI/CD pipeline started!"
-                //slackNotify("🚀 Salesforce CI/CD pipeline started for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
-            }*/
+            stage('Clean Workspace') {
+                cleanWs()
+                echo "Workspace cleaned successfully!"
+            }
 
-            // Checkout Source
             stage('Checkout Source') {
                 checkout scm
             }
 
-            // Static Code Analysis
             stage('Static Code Analysis') {
                 echo "Running PMD static code analysis on Apex classes..."
                 if (isUnix()) {
                     sh '''
                         if [ ! -d "pmd-bin" ]; then
                             echo "Downloading PMD..."
-                            wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip -O pmd.zip
+                            wget -q "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip" -O pmd.zip
                             unzip -q pmd.zip
                             mv pmd-bin-7.0.0 pmd-bin
                         fi
@@ -89,7 +77,7 @@ node {
                     bat '''
                         if not exist "%WORKSPACE%\\pmd-bin" (
                             echo Downloading PMD...
-                            curl -L -o "%WORKSPACE%\\pmd.zip" https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip
+                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip"
                             powershell -command "Expand-Archive -Force '%WORKSPACE%\\pmd.zip' '%WORKSPACE%'"
                             ren "%WORKSPACE%\\pmd-bin-7.0.0" pmd-bin
                         )
@@ -105,8 +93,7 @@ node {
                 }
             }
 
-            // Install SF CLI
-            stage('Install prerequisite') {
+            stage('Install Prerequisite') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
@@ -131,31 +118,17 @@ node {
                 }
             }
 
-            // Authenticate to Org
             stage('Authenticate Org') { 
                 authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
-                //slackNotify("✅ Authenticated Dev Org: $DEV_ORG_ALIAS")
             }
 
-            // Deploy to Dev Org
             stage('Deploy to Org') { 
                 deployToOrg(DEV_ORG_ALIAS)
-                //slackNotify("✅ Deployment to Dev Org completed")
             }
 
-            stage('Clean Workspace') {
-                cleanWs()
-                echo "Workspace cleaned successfully!"
-            }
-            //Pipeline Complete
-            /*stage('Pipeline Complete') {
-                echo "🎉 Salesforce CI/CD pipeline completed successfully!"
-                //slackNotify("🎉 Salesforce CI/CD pipeline completed successfully for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
-            }*/
-        } //end of withCredentials
+        } // end of withCredentials
     } catch (err) {
         echo "❌ Pipeline failed: ${err}"
-        //slackNotify("❌ Salesforce CI/CD pipeline FAILED for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})", 'danger')
         currentBuild.result = 'FAILURE'
         throw err
     } finally {
