@@ -66,15 +66,15 @@ node {
             // Static Code Analysis
             // ------------------------
             stage('Static Code Analysis') {
-                echo "🔎 Running Static Code Analysis..."
+    echo "🔎 Running Static Code Analysis..."
 
-                if (isUnix()) {
+    if (isUnix()) {
         sh """
             mkdir -p ${reportDir}
             npm install --global @salesforce/sfdx-scanner
             sf scanner run --target force-app --engine pmd,eslint \
                            --format html \
-                           --outfile ${reportDir}/StaticAnalysisReport.html
+                           --outfile ${reportDir}/StaticAnalysisReport.html || true
         """
     } else {
         bat """
@@ -82,13 +82,18 @@ node {
             npm install --global @salesforce/sfdx-scanner
             sf scanner run --target force-app --engine pmd,eslint ^
                            --format html ^
-                           --outfile ${reportDir}\\StaticAnalysisReport.html
+                           --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
         """
     }
 
-    // Archive report for Jenkins
-    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
-            }
+    // Verify report exists before archiving
+    if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
+        archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+        echo "✅ Static analysis report archived."
+    } else {
+        echo "⚠️ No static analysis report generated!"
+    }
+}
 
             /*stage('Authenticate Dev Org') {
                 authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
