@@ -135,10 +135,17 @@ node {
                         if not exist pmd-report.json echo [] > pmd-report.json
                     '''
 
-                    def criticalCount = bat(
-                        script: 'findstr /i "severity\":\"Critical\"" pmd-report.json | find /c /v ""',
+                    def criticalCount = powershell(
+                        script: """
+                            if (Test-Path "pmd-report.json") {
+                                (Get-Content pmd-report.json | Select-String -Pattern '"severity": "Critical"').Count
+                            } else {
+                                0
+                            }
+                        """,
                         returnStdout: true
                     ).trim()
+
                     if (criticalCount.isInteger() && criticalCount.toInteger() > 0) {
                         error "❌ PMD found ${criticalCount} critical violations! Check pmd-report.json for details."
                     }
