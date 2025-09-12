@@ -51,7 +51,7 @@ node {
 
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'dev'
-            //def reportDir = 'pmd-report-html'
+            def reportDir = 'pmd-report-html'
 
             stage('Clean Workspace') {
                 cleanWs()
