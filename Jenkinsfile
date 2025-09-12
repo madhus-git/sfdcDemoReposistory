@@ -59,7 +59,7 @@ node {
                 checkout scm
             }
 
-            stage('Install prerequisite') {
+            stage('Install Salesforce CLI') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
@@ -84,31 +84,21 @@ node {
                 }
             }
 
-            stage('Static Code Analysis') {
+            stage('Static Code Analysis - PMD') {
                 if (isUnix()) {
                     sh '''
                         echo "Running PMD analysis on Apex classes..."
                         npm install --global @salesforce/sfdx-scanner
 
                         # Generate text report
-                        sf scanner run --target "force-app/main/default/classes" \
-                                       --engine pmd \
-                                       --format text \
-                                       --outfile pmd-report.txt || true
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile pmd-report.txt || true
 
                         # Generate JSON report
-                        sf scanner run --target "force-app/main/default/classes" \
-                                       --engine pmd \
-                                       --format json \
-                                       --outfile pmd-report.json || true
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile pmd-report.json || true
 
                         # Ensure files exist
-                        if [ ! -f pmd-report.txt ]; then
-                            echo "No violations found" > pmd-report.txt
-                        fi
-                        if [ ! -f pmd-report.json ]; then
-                            echo "[]" > pmd-report.json
-                        fi
+                        [ ! -f pmd-report.txt ] && echo "No violations found" > pmd-report.txt
+                        [ ! -f pmd-report.json ] && echo "[]" > pmd-report.json
                     '''
 
                     def criticalCount = sh(
@@ -126,25 +116,23 @@ node {
                         npm install --global @salesforce/sfdx-scanner
 
                         rem Generate text report
-                        sf scanner run --target "force-app/main/default/classes" ^
-                                       --engine pmd ^
-                                       --format text ^
-                                       --outfile pmd-report.txt
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile pmd-report.txt
                         if not exist pmd-report.txt echo No violations found > pmd-report.txt
 
                         rem Generate JSON report
-                        sf scanner run --target "force-app/main/default/classes" ^
-                                       --engine pmd ^
-                                       --format json ^
-                                       --outfile pmd-report.json
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile pmd-report.json
                         if not exist pmd-report.json echo [] > pmd-report.json
 
                         rem List files for debug
                         dir /b pmd-report.*
                     '''
 
-                    def criticalCount = bat(
-                        script: 'findstr /i "severity\": \"Critical\"" pmd-report.json | find /c /v ""',
+                    def criticalCount = powershell(
+                        script: """
+                            if (Test-Path "pmd-report.json") {
+                                (Get-Content pmd-report.json | ConvertFrom-Json | ForEach-Object { \$_ } | Where-Object { \$_.severity -eq 'Critical' }).Count
+                            } else { 0 }
+                        """,
                         returnStdout: true
                     ).trim()
 
@@ -153,7 +141,6 @@ node {
                     }
                 }
 
-                // Archive artifacts
                 archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
             }
 
