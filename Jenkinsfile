@@ -35,6 +35,13 @@ def deployToOrg(orgAlias) {
 // Pipeline
 // ------------------------
 node {
+
+    // Enable GitHub webhook trigger
+    properties([
+        pipelineTriggers([
+            githubPush()
+        ])
+    ])
     try {
         withCredentials([
             string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
