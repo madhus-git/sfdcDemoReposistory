@@ -66,59 +66,60 @@ node {
             // Static Code Analysis
             // ------------------------
             stage('Static Code Analysis') {
-    echo "🔎 Running Static Code Analysis..."
+                echo "🔎 Running Static Code Analysis..."
 
-    // Directory to store report
-    def reportDir = 'pmd-report-html'
+                if (isUnix()) {
+                    sh """
+                        mkdir -p ${reportDir}
 
-    if (isUnix()) {
-        sh """
-            mkdir -p ${reportDir}
-            echo "Using sf CLI to run static code analysis..."
-            
-            # Run Salesforce scanner
-            sf scanner:run --target "force-app/main/default/classes" \
-                           --engine pmd \
-                           --format html \
-                           --outfile ${reportDir}/StaticAnalysisReport.html || true
-        """
-    } else {
-        bat """
-            if not exist ${reportDir} mkdir ${reportDir}
-            echo Using sf CLI to run static code analysis...
+                        sf scanner:run --target "force-app/main/default/classes" \
+                                       --engine pmd \
+                                       --format html \
+                                       --outfile ${reportDir}/StaticAnalysisReport.html \
+                                       --reportfile ${reportDir}/violations.txt || true
+                    """
+                } else {
+                    bat """
+                        if not exist ${reportDir} mkdir ${reportDir}
+                        set PATH=%APPDATA%\\npm;%PATH%
 
-            # Make sure sf CLI is in PATH for Jenkins
-            set PATH=%APPDATA%\\npm;%PATH%
+                        sf scanner:run --target "force-app/main/default/classes" ^
+                                       --engine pmd ^
+                                       --format html ^
+                                       --outfile ${reportDir}\\StaticAnalysisReport.html ^
+                                       --reportfile ${reportDir}\\violations.txt || exit 0
+                    """
+                }
 
-            sf scanner:run --target "force-app/main/default/classes" ^
-                           --engine pmd ^
-                           --format html ^
-                           --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
-        """
-    }
+                // Publish HTML report
+                if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-    // Check if report exists before archiving and publishing
-    if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
-        echo "✅ Static analysis report generated!"
+                    publishHTML(target: [
+                        reportDir: "${reportDir}",
+                        reportFiles: "StaticAnalysisReport.html",
+                        reportName: "Static Code Analysis Report",
+                        keepAll: true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing: false
+                    ])
+                    echo "✅ Static analysis report published in Jenkins UI."
+                } else {
+                    error "⚠️ No static analysis report generated!"
+                }
 
-        archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+                // Quality Gate: Fail if violations exist
+                def violationsCount = 0
+                if (fileExists("${reportDir}/violations.txt")) {
+                    violationsCount = readFile("${reportDir}/violations.txt").trim().split("\\r?\\n").findAll { it.trim() != "" }.size()
+                }
 
-        publishHTML(target: [
-            reportDir: "${reportDir}",
-            reportFiles: "StaticAnalysisReport.html",
-            reportName: "Static Code Analysis Report",
-            keepAll: true,
-            alwaysLinkToLastBuild: true,
-            allowMissing: false
-        ])
-        echo "✅ Static analysis report published in Jenkins UI."
-    } else {
-        error "⚠️ No static analysis report generated! Please check sf CLI installation and PATH."
-    }
-}
-
-
-
+                if (violationsCount > 0) {
+                    error "❌ Static analysis failed! Found ${violationsCount} PMD violations."
+                } else {
+                    echo "✅ No PMD violations found."
+                }
+            }
 
 
             /*stage('Authenticate Dev Org') {
