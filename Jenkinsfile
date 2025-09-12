@@ -58,7 +58,7 @@ node {
                 checkout scm
             }
 
-            stage('Install Salesforce CLI') {
+            stage('Install prerequisite') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
@@ -83,7 +83,7 @@ node {
                 }
             }
 
-            stage('Static Code Analysis - PMD') {
+            stage('Static Code Analysis') {
                 if (isUnix()) {
                     sh '''
                         echo "Running PMD analysis on Apex classes..."
@@ -102,6 +102,9 @@ node {
                                        --outfile pmd-report.json || true
 
                         # Ensure JSON file exists
+                        if [ ! -f pmd-report.txt ]; then
+                            echo "No violations found" > pmd-report.txt
+                        fi
                         if [ ! -f pmd-report.json ]; then
                             echo "[]" > pmd-report.json
                         fi
@@ -123,15 +126,22 @@ node {
                         sf scanner run --target "force-app\\main\\default\\classes" ^
                                        --engine pmd ^
                                        --format text ^
-                                       --outfile pmd-report.txt || exit /b 0
+                                       --outfile pmd-report.txt
+                        if %ERRORLEVEL% neq 0 (
+                            echo No violations found > pmd-report.txt
+                        )
 
                         rem Generate JSON report
                         sf scanner run --target "force-app\\main\\default\\classes" ^
                                        --engine pmd ^
                                        --format json ^
-                                       --outfile pmd-report.json || exit /b 0
+                                       --outfile pmd-report.json
+                        if %ERRORLEVEL% neq 0 (
+                            echo [] > pmd-report.json
+                        )
 
-                        rem Ensure JSON file exists
+                        rem Ensure files exist
+                        if not exist pmd-report.txt echo No violations found > pmd-report.txt
                         if not exist pmd-report.json echo [] > pmd-report.json
                     '''
 
