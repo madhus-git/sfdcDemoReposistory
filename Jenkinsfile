@@ -65,7 +65,7 @@ node {
                 checkout scm
             }
 
-            // 🔍 Static Code Analysis
+            // Static Code Analysis
             stage('Static Code Analysis') {
                 echo "Running PMD static code analysis on Apex classes..."
                 if (isUnix()) {
@@ -73,8 +73,8 @@ node {
                         # Install PMD if not present
                         if [ ! -d "pmd-bin" ]; then
                             echo "Downloading PMD..."
-                            wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip
-                            unzip -q pmd-bin-7.0.0.zip
+                            wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip -O pmd.zip
+                            unzip -q pmd.zip
                             mv pmd-bin-7.0.0 pmd-bin
                         fi
                         
@@ -88,19 +88,19 @@ node {
                     '''
                 } else {
                     bat '''
-                        if not exist pmd-bin (
+                        if not exist "%WORKSPACE%\\pmd-bin" (
                             echo Downloading PMD...
-                            curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip
-                            powershell -command "Expand-Archive -Force pmd.zip ."
-                            rename pmd-bin-7.0.0 pmd-bin
+                            curl -L -o "%WORKSPACE%\\pmd.zip" https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip
+                            powershell -command "Expand-Archive -Force '%WORKSPACE%\\pmd.zip' '%WORKSPACE%'"
+                            ren "%WORKSPACE%\\pmd-bin-7.0.0" pmd-bin
                         )
 
-                        pmd-bin\\bin\\pmd.bat check ^
-                            -d force-app\\main\\default\\classes ^
+                        call "%WORKSPACE%\\pmd-bin\\bin\\pmd.bat" check ^
+                            -d "%WORKSPACE%\\force-app\\main\\default\\classes" ^
                             -R category/apex/design.xml ^
-                            -f text > pmd-report.txt || exit /b 0
+                            -f text > "%WORKSPACE%\\pmd-report.txt" || exit /b 0
 
-                        type pmd-report.txt
+                        type "%WORKSPACE%\\pmd-report.txt"
                     '''
                 }
             }
@@ -132,13 +132,13 @@ node {
             }
 
             // Authenticate to Org
-            stage('Authenticate Dev Org') { 
+            stage('Authenticate Org') { 
                 authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
                 //slackNotify("✅ Authenticated Dev Org: $DEV_ORG_ALIAS")
             }
 
             // Deploy to Dev Org
-            stage('Deploy to Dev Org') { 
+            stage('Deploy to Org') { 
                 deployToOrg(DEV_ORG_ALIAS)
                 //slackNotify("✅ Deployment to Dev Org completed")
             }
