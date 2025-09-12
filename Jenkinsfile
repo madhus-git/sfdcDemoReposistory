@@ -51,7 +51,9 @@ node {
 
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'dev'
-            //def reportDir = 'pmd-report-html'
+            def reportDir = 'pmd-report-html'
+            def htmlReport = "${reportDir}/StaticAnalysisReport.html"
+            def jsonReport = "${reportDir}/StaticAnalysisReport.json"
 
             stage('Clean Workspace') {
                 cleanWs()
@@ -66,76 +68,74 @@ node {
             // Static Code Analysis
             // ------------------------
             stage('Static Code Analysis') {
-    echo "🔎 Running Static Code Analysis..."
+                echo "🔎 Running Static Code Analysis..."
 
-    def reportDir = 'pmd-report-html'
-    def jsonReport = "${reportDir}/StaticAnalysisReport.json"
-    def htmlReport = "${reportDir}/StaticAnalysisReport.html"
+                if (isUnix()) {
+                    sh """
+                        mkdir -p ${reportDir}
 
-    if (isUnix()) {
-        sh """
-            mkdir -p ${reportDir}
+                        # Generate HTML report
+                        sf scanner:run --target "force-app/main/default/classes" \
+                                       --engine pmd \
+                                       --format html \
+                                       --outfile ${htmlReport} || true
 
-            # Generate HTML and JSON reports
-            sf scanner:run --target "force-app/main/default/classes" \
-                           --engine pmd \
-                           --format html \
-                           --outfile ${htmlReport} || true
+                        # Generate JSON report for quality gate
+                        sf scanner:run --target "force-app/main/default/classes" \
+                                       --engine pmd \
+                                       --format json \
+                                       --outfile ${jsonReport} || true
+                    """
+                } else {
+                    bat """
+                        if not exist ${reportDir} mkdir ${reportDir}
+                        set PATH=%APPDATA%\\npm;%PATH%
 
-            sf scanner:run --target "force-app/main/default/classes" \
-                           --engine pmd \
-                           --format json \
-                           --outfile ${jsonReport} || true
-        """
-    } else {
-        bat """
-            if not exist ${reportDir} mkdir ${reportDir}
-            set PATH=%APPDATA%\\npm;%PATH%
+                        sf scanner:run --target "force-app/main/default/classes" ^
+                                       --engine pmd ^
+                                       --format html ^
+                                       --outfile ${htmlReport} || exit 0
 
-            sf scanner:run --target "force-app/main/default/classes" ^
-                           --engine pmd ^
-                           --format html ^
-                           --outfile ${htmlReport} || exit 0
+                        sf scanner:run --target "force-app/main/default/classes" ^
+                                       --engine pmd ^
+                                       --format json ^
+                                       --outfile ${jsonReport} || exit 0
+                    """
+                }
 
-            sf scanner:run --target "force-app/main/default/classes" ^
-                           --engine pmd ^
-                           --format json ^
-                           --outfile ${jsonReport} || exit 0
-        """
-    }
+                // -----------------------------
+                // Publish HTML report in Jenkins UI
+                // -----------------------------
+                if (fileExists(htmlReport)) {
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-    // Publish HTML report
-    if (fileExists(htmlReport)) {
-        archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+                    publishHTML(target: [
+                        reportDir: "${reportDir}",
+                        reportFiles: "StaticAnalysisReport.html",
+                        reportName: "Static Code Analysis Report",
+                        keepAll: true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing: false
+                    ])
+                    echo "✅ Static analysis report published in Jenkins UI."
+                } else {
+                    error "⚠️ No static analysis report generated!"
+                }
 
-        publishHTML(target: [
-            reportDir: "${reportDir}",
-            reportFiles: "StaticAnalysisReport.html",
-            reportName: "Static Code Analysis Report",
-            keepAll: true,
-            alwaysLinkToLastBuild: true,
-            allowMissing: false
-        ])
-        echo "✅ Static analysis report published in Jenkins UI."
-    } else {
-        error "⚠️ No static analysis report generated!"
-    }
-
-    // -----------------------------
-    // Quality Gate: Fail build based on JSON
-    // -----------------------------
-    if (fileExists(jsonReport)) {
-        def jsonContent = readFile(jsonReport)
-        def json = readJSON text: jsonContent
-        // Count total violations
-        def violationsCount = json.issues.size() // PMD JSON has "issues" array
-        if (violationsCount > 0) {
-            error "❌ Static analysis failed! Found ${violationsCount} PMD violations."
-        } else {
-            echo "✅ No PMD violations found."
-        }
-    }
-}
+                // -----------------------------
+                // Quality Gate: Fail build if violations exist
+                // -----------------------------
+                if (fileExists(jsonReport)) {
+                    def jsonContent = readFile(jsonReport)
+                    def json = readJSON text: jsonContent
+                    def violationsCount = json.issues.size()
+                    if (violationsCount > 0) {
+                        error "❌ Static analysis failed! Found ${violationsCount} PMD violations."
+                    } else {
+                        echo "✅ No PMD violations found."
+                    }
+                }
+            }
 
 
 
