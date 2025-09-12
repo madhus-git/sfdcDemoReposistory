@@ -59,10 +59,10 @@ node {
                 if (isUnix()) {
                     sh '''
                         if [ ! -d "pmd-bin" ]; then
-                            echo "Downloading PMD..."
-                            wget -q "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip" -O pmd.zip
+                            echo "Downloading PMD 7.16.0..."
+                            wget -q "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip" -O pmd.zip
                             unzip -q pmd.zip
-                            mv pmd-bin-7.0.0 pmd-bin
+                            mv pmd-bin-7.16.0 pmd-bin
                         fi
 
                         ./pmd-bin/bin/pmd check \
@@ -76,10 +76,10 @@ node {
                 } else {
                     bat '''
                         if not exist "%WORKSPACE%\\pmd-bin" (
-                            echo Downloading PMD...
-                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip"
+                            echo Downloading PMD 7.16.0...
+                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip"
                             powershell -command "Expand-Archive -Force '%WORKSPACE%\\pmd.zip' '%WORKSPACE%'"
-                            ren "%WORKSPACE%\\pmd-bin-7.0.0" pmd-bin
+                            ren "%WORKSPACE%\\pmd-bin-7.16.0" pmd-bin
                         )
 
                         echo Running PMD Analysis...
