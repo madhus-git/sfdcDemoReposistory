@@ -69,23 +69,25 @@ node {
                 echo "🔎 Running Static Code Analysis..."
 
                 if (isUnix()) {
-                    sh """
-                        npm install --global @salesforce/sfdx-scanner
-                        sf scanner run --target force-app --engine pmd,eslint \
-                                       --format html \
-                                       --outfile ${reportDir}/StaticAnalysisReport.html
-                    """
-                } else {
-                    bat """
-                        npm install --global @salesforce/sfdx-scanner
-                        sf scanner run --target force-app --engine pmd,eslint ^
-                                       --format html ^
-                                       --outfile ${reportDir}\\StaticAnalysisReport.html
-                    """
-                }
+        sh """
+            mkdir -p ${reportDir}
+            npm install --global @salesforce/sfdx-scanner
+            sf scanner run --target force-app --engine pmd,eslint \
+                           --format html \
+                           --outfile ${reportDir}/StaticAnalysisReport.html
+        """
+    } else {
+        bat """
+            if not exist ${reportDir} mkdir ${reportDir}
+            npm install --global @salesforce/sfdx-scanner
+            sf scanner run --target force-app --engine pmd,eslint ^
+                           --format html ^
+                           --outfile ${reportDir}\\StaticAnalysisReport.html
+        """
+    }
 
-                // Archive report for Jenkins
-                archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+    // Archive report for Jenkins
+    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
             }
 
             /*stage('Authenticate Dev Org') {
