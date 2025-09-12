@@ -161,7 +161,7 @@ node {
                     keepAll: true,
                     reportDir: reportDir,
                     reportFiles: 'index.html',
-                    reportName: "PMD Static Analysis Report"
+                    reportName: "Static_Analysis_Report"
                 ])
 
                 echo "✅ PMD analysis completed. HTML report published."
