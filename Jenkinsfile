@@ -43,7 +43,6 @@ node {
         ]) {
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'dev'
-            def workspace = pwd()
             def reportDir = 'pmd-report-html'
 
             stage('Clean Workspace') {
@@ -78,13 +77,14 @@ node {
                         )
                     '''
                 }
-            } */
+            }*/
 
             stage('Static Code Analysis') {
                 echo "🚀 Running PMD analysis on Apex classes..."
 
                 if (isUnix()) {
                     sh """
+                        # Clean and recreate report folder
                         rm -rf "${reportDir}" || true
                         mkdir -p "${reportDir}"
 
@@ -119,7 +119,7 @@ node {
 
                         npm install --global @salesforce/sfdx-scanner
 
-                        REM Generate PMD reports using npx
+                        REM Run scanner using npx to avoid PATH issues
                         npx sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt"
                         if not exist "pmd-report.txt" echo "No violations found" > "pmd-report.txt"
 
@@ -132,7 +132,7 @@ node {
                         REM Ensure index.html exists
                         if not exist "${reportDir}\\index.html" echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}\\index.html"
 
-                        REM Small delay to ensure files are ready
+                        REM Small delay to ensure files are fully written
                         timeout /t 2
 
                         echo Listing generated files...
@@ -174,7 +174,6 @@ node {
             stage('Deploy to Dev Org') {
                 deployToOrg(DEV_ORG_ALIAS)
             }*/
-
         }
 
     } catch (err) {
