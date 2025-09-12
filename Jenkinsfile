@@ -40,6 +40,14 @@ node {
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'projectdemosfdc'
 
+            // Trigger on GitHub push
+
+            properties([
+                pipelineTriggers([
+                    githubPush()
+                ])
+            ])
+
             stage('Clean Workspace') {
                 cleanWs()
                 echo "Workspace cleaned successfully!"
