@@ -55,43 +55,23 @@ node {
             }
 
             stage('Static Code Analysis - PMD') {
-                echo "Running PMD static code analysis on Apex classes..."
                 if (isUnix()) {
                     sh '''
-                        if [ ! -d "pmd-bin" ]; then
-                            echo "Downloading PMD 7.16.0..."
-                            wget -q "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip" -O pmd.zip || \
-                            wget -q "https://sourceforge.net/projects/pmd/files/pmd/7.16.0/pmd-dist-7.16.0-bin.zip" -O pmd.zip
-                            unzip -q pmd.zip
-                            mv pmd-bin-7.16.0 pmd-bin
-                        fi
-
-                        ./pmd-bin/bin/pmd check \
-                            -d force-app/main/default/classes \
-                            -R category/apex/design.xml \
-                            -f text > pmd-report.txt || true
-
-                        echo "PMD Report Generated:"
-                        cat pmd-report.txt
+                        echo "Running PMD analysis on Apex classes..."
+                        npm install --global @salesforce/sfdx-scanner
+                        sf scanner run --target "force-app/main/default/classes" \
+                                       --engine pmd \
+                                       --format text \
+                                       --outfile pmd-report.txt || true
                     '''
                 } else {
                     bat '''
-                        if not exist "%WORKSPACE%\\pmd-bin" (
-                            echo Downloading PMD 7.16.0...
-                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip" || ^
-                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://sourceforge.net/projects/pmd/files/pmd/7.16.0/pmd-dist-7.16.0-bin.zip"
-
-                            powershell -command "Expand-Archive -Force '%WORKSPACE%\\pmd.zip' '%WORKSPACE%'"
-                            ren "%WORKSPACE%\\pmd-bin-7.16.0" pmd-bin
-                        )
-
-                        echo Running PMD Analysis...
-                        call "%WORKSPACE%\\pmd-bin\\bin\\pmd.bat" check ^
-                            -d "%WORKSPACE%\\force-app\\main\\default\\classes" ^
-                            -R category/apex/design.xml ^
-                            -f text > "%WORKSPACE%\\pmd-report.txt" || exit /b 0
-
-                        type "%WORKSPACE%\\pmd-report.txt"
+                        echo Running PMD analysis on Apex classes...
+                        npm install --global @salesforce/sfdx-scanner
+                        sf scanner run --target "force-app\\main\\default\\classes" ^
+                                       --engine pmd ^
+                                       --format text ^
+                                       --outfile pmd-report.txt || exit /b 0
                     '''
                 }
             }
