@@ -54,13 +54,14 @@ node {
                 checkout scm
             }
 
-            stage('Static Code Analysis') {
+            stage('Static Code Analysis - PMD') {
                 echo "Running PMD static code analysis on Apex classes..."
                 if (isUnix()) {
                     sh '''
                         if [ ! -d "pmd-bin" ]; then
                             echo "Downloading PMD 7.16.0..."
-                            wget -q "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip" -O pmd.zip
+                            wget -q "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip" -O pmd.zip || \
+                            wget -q "https://sourceforge.net/projects/pmd/files/pmd/7.16.0/pmd-dist-7.16.0-bin.zip" -O pmd.zip
                             unzip -q pmd.zip
                             mv pmd-bin-7.16.0 pmd-bin
                         fi
@@ -77,7 +78,9 @@ node {
                     bat '''
                         if not exist "%WORKSPACE%\\pmd-bin" (
                             echo Downloading PMD 7.16.0...
-                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip"
+                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.16.0/pmd-dist-7.16.0-bin.zip" || ^
+                            curl -L -o "%WORKSPACE%\\pmd.zip" "https://sourceforge.net/projects/pmd/files/pmd/7.16.0/pmd-dist-7.16.0-bin.zip"
+
                             powershell -command "Expand-Archive -Force '%WORKSPACE%\\pmd.zip' '%WORKSPACE%'"
                             ren "%WORKSPACE%\\pmd-bin-7.16.0" pmd-bin
                         )
@@ -93,7 +96,7 @@ node {
                 }
             }
 
-            stage('Install Prerequisite') {
+            stage('Install Salesforce CLI') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
