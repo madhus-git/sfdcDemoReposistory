@@ -95,7 +95,11 @@ node {
                         echo Generating HTML report...
                         sf scanner report --input "${workspace}/pmd-report.json" --format html --output "${reportDir}/index.html"
 
-                        echo Listing generated files...
+                        if [ ! -f "${reportDir}/index.html" ]; then
+                            echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}/index.html"
+                        fi
+
+                        echo "Listing generated files..."
                         ls -l "${workspace}/pmd-report.*"
                         ls -l "${reportDir}"
                     """
@@ -112,25 +116,25 @@ node {
                         npm install --global @salesforce/sfdx-scanner
 
                         echo Generating PMD reports...
-                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "${workspace}\\pmd-report.txt"
-                        if not exist "${workspace}\\pmd-report.txt" echo No violations found > "${workspace}\\pmd-report.txt"
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt"
+                        if not exist "pmd-report.txt" echo "No violations found" > "pmd-report.txt"
 
-                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "${workspace}\\pmd-report.json"
-                        if not exist "${workspace}\\pmd-report.json" echo [] > "${workspace}\\pmd-report.json"
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "pmd-report.json"
+                        if not exist "pmd-report.json" echo [] > "pmd-report.json"
 
                         echo Generating HTML report...
-                        sf scanner report --input "${workspace}\\pmd-report.json" --format html --output "${reportDir}\\index.html"
+                        sf scanner report --input "pmd-report.json" --format html --output "${reportDir}\\index.html"
 
                         if not exist "${reportDir}\\index.html" echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}\\index.html"
 
                         echo Listing generated files...
-                        dir /b "${workspace}\\pmd-report.*"
-                        dir /b "${reportDir}"
+                        dir /b pmd-report.*
+                        dir /b ${reportDir}
                     """
 
                     def criticalCount = powershell(script: """
-                        if (Test-Path "${workspace}\\pmd-report.json") {
-                            (Get-Content "${workspace}\\pmd-report.json" | ConvertFrom-Json | Where-Object { \$_.severity -eq 'Critical' }).Count
+                        if (Test-Path "pmd-report.json") {
+                            (Get-Content "pmd-report.json" | ConvertFrom-Json | Where-Object { \$_.severity -eq 'Critical' }).Count
                         } else { 0 }
                     """, returnStdout: true).trim()
                     echo "Critical PMD violations found: ${criticalCount}"
@@ -140,7 +144,7 @@ node {
                 }
 
                 // Archive artifacts
-                archiveArtifacts artifacts: "${workspace}/pmd-report.*", allowEmptyArchive: true
+                archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
 
                 // Publish HTML report in Jenkins UI
                 publishHTML([
@@ -155,13 +159,14 @@ node {
                 echo "✅ PMD analysis completed. HTML report published."
             }
 
-            stage('Authenticate Dev Org') {
+            /*stage('Authenticate Dev Org') {
                 authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
             }
 
             stage('Deploy to Dev Org') {
                 deployToOrg(DEV_ORG_ALIAS)
-            }
+            }*/
+
         }
 
     } catch (err) {
