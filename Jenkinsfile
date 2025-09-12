@@ -72,21 +72,21 @@ node {
         sh """
             mkdir -p ${reportDir}
             npm install --global @salesforce/sfdx-scanner
-            sf scanner run --target force-app --engine pmd,eslint \
-                           --format html \
-                           --outfile ${reportDir}/StaticAnalysisReport.html || true
+            sfdx scanner:run --target force-app --engine pmd,eslint \
+                             --format html \
+                             --outfile ${reportDir}/StaticAnalysisReport.html || true
         """
     } else {
         bat """
             if not exist ${reportDir} mkdir ${reportDir}
             npm install --global @salesforce/sfdx-scanner
-            sf scanner run --target force-app --engine pmd,eslint ^
-                           --format html ^
-                           --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
+            sfdx scanner:run --target force-app --engine pmd,eslint ^
+                             --format html ^
+                             --outfile ${reportDir}\\StaticAnalysisReport.html || exit 0
         """
     }
 
-    // Verify report exists before archiving
+    // Archive only if report exists
     if (fileExists("${reportDir}/StaticAnalysisReport.html")) {
         archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
         echo "✅ Static analysis report archived."
@@ -94,6 +94,7 @@ node {
         echo "⚠️ No static analysis report generated!"
     }
 }
+
 
             /*stage('Authenticate Dev Org') {
                 authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
