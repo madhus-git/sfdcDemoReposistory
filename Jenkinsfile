@@ -55,7 +55,7 @@ node {
                 checkout scm
             }
 
-            stage('Install Prerequisites') {
+            /*stage('Install Prerequisites') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
@@ -78,14 +78,13 @@ node {
                         )
                     '''
                 }
-            }
+            } */
 
             stage('Static Code Analysis') {
                 echo "🚀 Running PMD analysis on Apex classes..."
 
                 if (isUnix()) {
                     sh """
-                        # Clean and recreate report folder
                         rm -rf "${reportDir}" || true
                         mkdir -p "${reportDir}"
 
@@ -120,15 +119,15 @@ node {
 
                         npm install --global @salesforce/sfdx-scanner
 
-                        REM Generate PMD reports
-                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt"
+                        REM Generate PMD reports using npx
+                        npx sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt"
                         if not exist "pmd-report.txt" echo "No violations found" > "pmd-report.txt"
 
-                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "pmd-report.json"
+                        npx sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "pmd-report.json"
                         if not exist "pmd-report.json" echo [] > "pmd-report.json"
 
                         REM Generate HTML report
-                        sf scanner report --input "pmd-report.json" --format html --output "${reportDir}\\index.html"
+                        npx sf scanner report --input "pmd-report.json" --format html --output "${reportDir}\\index.html"
 
                         REM Ensure index.html exists
                         if not exist "${reportDir}\\index.html" echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}\\index.html"
