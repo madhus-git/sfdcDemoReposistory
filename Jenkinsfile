@@ -39,7 +39,7 @@ node {
     // Enable GitHub webhook trigger
     properties([
         pipelineTriggers([
-            pollSCM('H/2 * * * *')  // check repo every 2 mins
+            pollSCM('H/1 * * * *')  // check repo every 2 mins
         ])
     ])
     try {
