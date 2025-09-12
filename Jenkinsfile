@@ -44,7 +44,7 @@ node {
             def SFDC_HOST = 'https://login.salesforce.com'
             def DEV_ORG_ALIAS = 'dev'
             def workspace = pwd()
-            def reportDir = isUnix() ? "${workspace}/pmd-report-html" : "${workspace}\\pmd-report-html"
+            def reportDir = 'pmd-report-html'
 
             stage('Clean Workspace') {
                 cleanWs()
@@ -85,26 +85,28 @@ node {
 
                 if (isUnix()) {
                     sh """
+                        # Clean and recreate report folder
+                        rm -rf "${reportDir}" || true
                         mkdir -p "${reportDir}"
+
                         npm install --global @salesforce/sfdx-scanner
 
-                        echo Generating PMD reports...
-                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "${workspace}/pmd-report.txt" || echo "No violations found" > "${workspace}/pmd-report.txt"
-                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "${workspace}/pmd-report.json" || echo "[]" > "${workspace}/pmd-report.json"
+                        # Generate PMD reports
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt" || echo "No violations found" > "pmd-report.txt"
+                        sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "pmd-report.json" || echo "[]" > "pmd-report.json"
 
-                        echo Generating HTML report...
-                        sf scanner report --input "${workspace}/pmd-report.json" --format html --output "${reportDir}/index.html"
+                        # Generate HTML report
+                        sf scanner report --input "pmd-report.json" --format html --output "${reportDir}/index.html"
 
-                        if [ ! -f "${reportDir}/index.html" ]; then
-                            echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}/index.html"
-                        fi
+                        # Ensure index.html exists
+                        [ ! -f "${reportDir}/index.html" ] && echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}/index.html"
 
                         echo "Listing generated files..."
-                        ls -l "${workspace}/pmd-report.*"
+                        ls -l pmd-report.*
                         ls -l "${reportDir}"
                     """
 
-                    def criticalCount = sh(script: "grep -o '\"severity\": *\"Critical\"' ${workspace}/pmd-report.json | wc -l", returnStdout: true).trim()
+                    def criticalCount = sh(script: "grep -o '\"severity\": *\"Critical\"' pmd-report.json | wc -l", returnStdout: true).trim()
                     echo "Critical PMD violations found: ${criticalCount}"
                     if (criticalCount.toInteger() > 0) {
                         error "❌ PMD found ${criticalCount} critical violations!"
@@ -112,20 +114,27 @@ node {
 
                 } else {
                     bat """
-                        if not exist "${reportDir}" mkdir "${reportDir}"
+                        REM Clean and recreate report folder
+                        if exist "${reportDir}" rmdir /s /q "${reportDir}"
+                        mkdir "${reportDir}"
+
                         npm install --global @salesforce/sfdx-scanner
 
-                        echo Generating PMD reports...
+                        REM Generate PMD reports
                         sf scanner run --target "force-app/main/default/classes" --engine pmd --format text --outfile "pmd-report.txt"
                         if not exist "pmd-report.txt" echo "No violations found" > "pmd-report.txt"
 
                         sf scanner run --target "force-app/main/default/classes" --engine pmd --format json --outfile "pmd-report.json"
                         if not exist "pmd-report.json" echo [] > "pmd-report.json"
 
-                        echo Generating HTML report...
+                        REM Generate HTML report
                         sf scanner report --input "pmd-report.json" --format html --output "${reportDir}\\index.html"
 
+                        REM Ensure index.html exists
                         if not exist "${reportDir}\\index.html" echo "<html><body><h1>No PMD report generated</h1></body></html>" > "${reportDir}\\index.html"
+
+                        REM Small delay to ensure files are ready
+                        timeout /t 2
 
                         echo Listing generated files...
                         dir /b pmd-report.*
@@ -146,7 +155,7 @@ node {
                 // Archive artifacts
                 archiveArtifacts artifacts: 'pmd-report.*', allowEmptyArchive: true
 
-                // Publish HTML report in Jenkins UI
+                // Publish HTML report
                 publishHTML([
                     allowMissing: false,
                     alwaysLinkToLastBuild: true,
