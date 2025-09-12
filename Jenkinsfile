@@ -55,18 +55,58 @@ node {
 
             // Pipeline Stages
 
-            stage('Pipeline Start') {
+            /*stage('Pipeline Start') {
                 echo "🚀 Salesforce CI/CD pipeline started!"
                 //slackNotify("🚀 Salesforce CI/CD pipeline started for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
-            }
+            }*/
 
             // Checkout Source
             stage('Checkout Source') {
                 checkout scm
             }
 
+            // 🔍 Static Code Analysis
+            stage('Static Code Analysis') {
+                echo "Running PMD static code analysis on Apex classes..."
+                if (isUnix()) {
+                    sh '''
+                        # Install PMD if not present
+                        if [ ! -d "pmd-bin" ]; then
+                            echo "Downloading PMD..."
+                            wget -q https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip
+                            unzip -q pmd-bin-7.0.0.zip
+                            mv pmd-bin-7.0.0 pmd-bin
+                        fi
+                        
+                        ./pmd-bin/bin/pmd check \
+                            -d force-app/main/default/classes \
+                            -R category/apex/design.xml \
+                            -f text > pmd-report.txt || true
+
+                        echo "PMD Report Generated:"
+                        cat pmd-report.txt
+                    '''
+                } else {
+                    bat '''
+                        if not exist pmd-bin (
+                            echo Downloading PMD...
+                            curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.0.0/pmd-bin-7.0.0.zip
+                            powershell -command "Expand-Archive -Force pmd.zip ."
+                            rename pmd-bin-7.0.0 pmd-bin
+                        )
+
+                        pmd-bin\\bin\\pmd.bat check ^
+                            -d force-app\\main\\default\\classes ^
+                            -R category/apex/design.xml ^
+                            -f text > pmd-report.txt || exit /b 0
+
+                        type pmd-report.txt
+                    '''
+                }
+            }
+
             // Install SF CLI
-            stage('Install Salesforce CLI') {
+            stage('Install prerequisite') {
                 if (isUnix()) {
                     sh '''
                         if ! command -v sf >/dev/null 2>&1; then
@@ -104,10 +144,10 @@ node {
             }
 
             //Pipeline Complete
-            stage('Pipeline Complete') {
+            /*stage('Pipeline Complete') {
                 echo "🎉 Salesforce CI/CD pipeline completed successfully!"
                 //slackNotify("🎉 Salesforce CI/CD pipeline completed successfully for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
-            }
+            }*/
         } //end of withCredentials
     } catch (err) {
         echo "❌ Pipeline failed: ${err}"
