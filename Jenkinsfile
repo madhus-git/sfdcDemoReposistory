@@ -5,20 +5,22 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
-                             --jwt-key-file "$JWT_KEY_FILE" \
-                             --username "$SFDC_USERNAME" \
-                             --alias "$ORG_ALIAS" \
+            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \\
+                             --jwt-key-file "$JWT_KEY_FILE" \\
+                             --username "$SFDC_USERNAME" \\
+                             --alias "$ORG_ALIAS" \\
                              --instance-url "$SFDC_HOST"
         """
     } else {
         bat """
             echo Authenticating to Salesforce Org: %ORG_ALIAS%...
-            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^ 
-                             --jwt-key-file %JWT_KEY_FILE% ^ 
-                             --username %SFDC_USERNAME% ^ 
-                             --alias %ORG_ALIAS% ^ 
-                             --instance-url %SFDC_HOST%
+
+            sf org login jwt ^
+                --client-id %CONNECTED_APP_CONSUMER_KEY% ^
+                --jwt-key-file %JWT_KEY_FILE% ^
+                --username %SFDC_USERNAME% ^
+                --alias %ORG_ALIAS% ^
+                --instance-url %SFDC_HOST%
         """
     }
 }
@@ -42,9 +44,7 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            // --------------------------
-            // Use workspace-relative path for artifacts
-            // --------------------------
+            // Workspace-relative path for artifacts
             def reportDir   = 'pmd-report-html'
             def htmlReport  = reportDir + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
             def sarifReport = reportDir + (isUnix() ? "/pmd-report.sarif" : "\\pmd-report.sarif")
@@ -147,7 +147,6 @@ node {
                 // Publish Reports
                 // --------------------------
                 stage('Publish Reports') {
-                    // Always use workspace-relative path
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
                     publishHTML(target: [
