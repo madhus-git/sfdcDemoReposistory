@@ -95,22 +95,25 @@ node {
             }
 
             stage('Publish Reports') {
-                archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+    // Archive raw reports
+    archiveArtifacts artifacts: 'pmd-report-html/**', fingerprint: true
 
-                publishHTML([[
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: reportDir,
-                    reportFiles: 'StaticAnalysisReport.html',
-                    reportName: 'Salesforce Static Analysis Report'
-                ]])
+    // Publish HTML report in Jenkins UI
+    publishHTML(target: [
+        allowMissing: false,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: 'pmd-report-html',
+        reportFiles: 'StaticAnalysisReport.html',
+        reportName: 'Salesforce Static Analysis Report'
+    ])
 
-                recordIssues(
-                    tools: [sarif(name: 'Salesforce Code Analyzer')],
-                    pattern: "${reportDir}/pmd-report.sarif.json"
-                )
-            }
+    // Publish SARIF report to Warnings NG
+    recordIssues(
+        tools: [sarif(name: 'Salesforce Code Analyzer')],
+        pattern: 'pmd-report-html/pmd-report.sarif.json'
+    )
+}
 
             /* Uncomment when ready for deployment
             stage('Authenticate Dev Org') {
