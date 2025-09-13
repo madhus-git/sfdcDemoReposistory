@@ -146,10 +146,8 @@ node {
                 // Publish Reports
                 // --------------------------
                 stage('Publish Reports') {
-                    // Archive all reports for download
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // Publish HTML report
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -161,7 +159,6 @@ node {
                         escapeUnderscores: false
                     ])
 
-                    // SARIF to Warnings NG (for trend graphs)
                     recordIssues(
                         tools: [sarif(
                             name: 'Salesforce Code Analyzer',
@@ -185,13 +182,11 @@ node {
                         def pmdDashboardUrl  = "${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
                         def sarifTrendUrl    = "${env.BUILD_URL}analysis/"
 
-                        currentBuild.description = """
+                        // Use rawBuild to allow HTML rendering
+                        currentBuild.rawBuild.setDescription("""
                             <a href='${pmdDashboardUrl}' target='_blank'>Salesforce PMD Dashboard</a><br/>
                             <a href='${sarifTrendUrl}' target='_blank'>SARIF Warnings NG Trends</a>
-                        """
-                        echo "Links added to build sidebar:"
-                        echo "PMD Dashboard: ${pmdDashboardUrl}"
-                        echo "SARIF Trends: ${sarifTrendUrl}"
+                        """)
                     }
                 }
 
