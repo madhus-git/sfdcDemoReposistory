@@ -5,10 +5,10 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
-                             --jwt-key-file "$JWT_KEY_FILE" \
-                             --username "$SFDC_USERNAME" \
-                             --alias "$ORG_ALIAS" \
+            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \\
+                             --jwt-key-file "$JWT_KEY_FILE" \\
+                             --username "$SFDC_USERNAME" \\
+                             --alias "$ORG_ALIAS" \\
                              --instance-url "$SFDC_HOST"
         """
     } else {
@@ -72,7 +72,7 @@ node {
                 // --------------------------
                 // Install Salesforce CLI
                 // --------------------------
-                stage('Install prerequisite') {
+                stage('Install Salesforce CLI') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -105,14 +105,14 @@ node {
                         sh """
                             mkdir -p ${reportDir}
 
-                            sf scanner:run --target "force-app/main/default/classes" \
-                                           --engine pmd \
-                                           --format html \
+                            sf scanner:run --target "force-app/main/default/classes" \\
+                                           --engine pmd \\
+                                           --format html \\
                                            --outfile "${htmlReport}" || true
 
-                            sf scanner:run --target "force-app/main/default/classes" \
-                                           --engine pmd \
-                                           --format sarif \
+                            sf scanner:run --target "force-app/main/default/classes" \\
+                                           --engine pmd \\
+                                           --format sarif \\
                                            --outfile "${sarifReport}" || true
                         """
                     } else {
@@ -144,13 +144,13 @@ node {
                 }
 
                 // --------------------------
-                // Publish Reports
+                // Publish Reports (HTML + SARIF)
                 // --------------------------
                 stage('Publish Reports') {
-                    // Archive all reports (for download)
+                    // Archive all reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // Ensure HTML report is published (this is the full interactive dashboard)
+                    // Publish HTML report (clickable in Jenkins sidebar)
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -162,7 +162,7 @@ node {
                         escapeUnderscores: false
                     ])
 
-                    // SARIF to Warnings NG (for graphs & trends)
+                    // Publish SARIF to Warnings NG (trend graphs)
                     recordIssues(
                         tools: [sarif(
                             name: 'Salesforce Code Analyzer',
@@ -174,23 +174,10 @@ node {
                             [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
                         ]
                     )
-                }
 
-                // --------------------------
-                // Add Dashboard Links (Safe HTML)
-                // --------------------------
-                stage('Add Dashboard Links') {
-                    steps {
-                        script {
-                            def pmdDashboardUrl  = "${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
-                            def sarifTrendUrl    = "${env.BUILD_URL}analysis/"
-
-                            wrap([$class: 'BuildDescriptionSetter', description: """
-                                <a href='${pmdDashboardUrl}' target='_blank'>Salesforce PMD Dashboard</a><br/>
-                                <a href='${sarifTrendUrl}' target='_blank'>SARIF Warnings NG Trends</a>
-                            """])
-                        }
-                    }
+                    // Echo clickable links in console
+                    echo "👉 Salesforce PMD Dashboard: ${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
+                    echo "👉 SARIF Warnings NG Trends: ${env.BUILD_URL}analysis/"
                 }
 
                 // --------------------------
