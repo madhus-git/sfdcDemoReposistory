@@ -144,11 +144,13 @@ node {
                 }
 
                 // --------------------------
-                // Publish Reports
+                // Publish Reports (Fixed)
                 // --------------------------
                 stage('Publish Reports') {
+                    // Save reports as build artifacts
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
+                    // Add HTML report in Jenkins UI
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -159,6 +161,7 @@ node {
                         reportTitles: 'Salesforce Static Analysis Report'
                     ])
 
+                    // Parse SARIF for trend charts
                     recordIssues(
                         tools: [sarif(
                             name: 'Salesforce Code Analyzer',
@@ -170,6 +173,9 @@ node {
                             [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
                         ]
                     )
+
+                    // Print Jenkins-hosted report URL
+                    echo "👉 Open Salesforce Report at: ${env.BUILD_URL}Salesforce_20Static_20Analysis_20Report/"
                 }
 
                 // --------------------------
@@ -191,10 +197,5 @@ node {
         echo "Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
         throw err
-    } finally {
-        // Always print clickable report URL in console
-                echo "👉 Open report at: ${env.BUILD_URL}Salesforce_20Static_20Analysis_20Report/"
     }
 }
-
-
