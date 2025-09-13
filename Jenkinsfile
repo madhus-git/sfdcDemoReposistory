@@ -133,17 +133,25 @@ node {
                 // --------------------------
                 stage('Copy Local Report (Optional)') {
                     if (!fileExists(htmlReport)) {
+                        echo "StaticAnalysisReport.html not found, copying from local path..."
+
+                        // Replace this path with your actual local HTML report if needed
+                        def localReportPath = isUnix() ? "/home/jenkins/StaticAnalysisReport.html" :
+                                                         "C:\\Users\\k.sudha.madhuri\\.jenkins\\workspace\\MyFirstSF_Job\\StaticAnalysisReport.html"
+
                         if (isUnix()) {
                             sh """
                                 mkdir -p ${reportDir}
-                                cp /path/to/local/StaticAnalysisReport.html ${htmlReport}
+                                cp "${localReportPath}" "${htmlReport}"
                             """
                         } else {
                             bat """
                                 if not exist ${reportDir} mkdir ${reportDir}
-                                copy "C:\\path\\to\\local\\StaticAnalysisReport.html" ${htmlReport}
+                                copy "${localReportPath}" "${htmlReport}"
                             """
                         }
+                    } else {
+                        echo "StaticAnalysisReport.html already exists, skipping copy."
                     }
                 }
 
