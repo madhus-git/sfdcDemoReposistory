@@ -1,35 +1,39 @@
+// ==============================
 // Utility Functions
-def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
+// ==============================
+def authenticateOrg() {
     if (isUnix()) {
-        sh """
-            echo "Authenticating to Salesforce Org: ${orgAlias}..."
-            sf org login jwt --client-id ${consumerKey} \
-                             --jwt-key-file ${jwtKeyFile} \
-                             --username ${username} \
-                             --alias ${orgAlias} \
-                             --instance-url ${sfdcHost}
-        """
+        sh '''
+            echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
+            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
+                             --jwt-key-file "$JWT_KEY_FILE" \
+                             --username "$SFDC_USERNAME" \
+                             --alias "$ORG_ALIAS" \
+                             --instance-url "$SFDC_HOST"
+        '''
     } else {
-        bat """
-            echo Authenticating to Salesforce Org: ${orgAlias}...
-            sf org login jwt --client-id %${consumerKey}% \
-                             --jwt-key-file %${jwtKeyFile}% \
-                             --username %${username}% \
-                             --alias ${orgAlias} \
-                             --instance-url %${sfdcHost}%
-        """
+        bat '''
+            echo Authenticating to Salesforce Org: %ORG_ALIAS%...
+            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^
+                             --jwt-key-file %JWT_KEY_FILE% ^
+                             --username %SFDC_USERNAME% ^
+                             --alias %ORG_ALIAS% ^
+                             --instance-url %SFDC_HOST%
+        '''
     }
 }
 
-def deployToOrg(orgAlias) {
+def deployToOrg() {
     if (isUnix()) {
-        sh "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+        sh "sf project deploy start --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
     } else {
-        bat "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+        bat "sf project deploy start --target-org %ORG_ALIAS% --ignore-conflicts --wait 10"
     }
 }
 
+// ==============================
 // Main Pipeline
+// ==============================
 node {
     try {
         withCredentials([
@@ -37,88 +41,88 @@ node {
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
-
-            def SFDC_HOST   = 'https://login.salesforce.com'
-            def DEV_ORG_ALIAS = 'projectdemosfdc'
             def reportDir   = 'pmd-report-html'
             def htmlReport  = "${reportDir}/StaticAnalysisReport.html"
             def sarifReport = "${reportDir}/pmd-report.sarif"
 
-            stage('Clean Workspace') {
-                cleanWs()
-                echo "Workspace cleaned successfully!"
-            }
+            withEnv([
+                "SFDC_HOST=https://login.salesforce.com",
+                "ORG_ALIAS=projectdemosfdc"
+            ]) {
 
-            stage('Checkout Source') {
-                checkout scm
-            }
-
-            stage('Static Code Analysis') {
-                if (isUnix()) {
-                    sh """
-                        mkdir -p ${reportDir}
-
-                        sf scanner:run --target "force-app/main/default/classes" \
-                                       --engine pmd \
-                                       --format html \
-                                       --outfile "${htmlReport}" || true
-
-                        sf scanner:run --target "force-app/main/default/classes" \
-                                       --engine pmd \
-                                       --format sarif \
-                                       --outfile "${sarifReport}" || true
-                    """
-                } else {
-                    bat """
-                        if not exist ${reportDir} mkdir ${reportDir}
-
-                        sf scanner:run --target "force-app/main/default/classes" ^
-                                       --engine pmd ^
-                                       --format html ^
-                                       --outfile "${htmlReport}" || exit 0
-
-                        sf scanner:run --target "force-app/main/default/classes" ^
-                                       --engine pmd ^
-                                       --format sarif ^
-                                       --outfile "${sarifReport}" || exit 0
-                    """
+                stage('Clean Workspace') {
+                    cleanWs()
+                    echo "Workspace cleaned successfully!"
                 }
-            }
 
-            stage('Publish Reports') {
-                // Archive raw reports
-                archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+                stage('Checkout Source') {
+                    checkout scm
+                }
 
-                // Publish HTML report in Jenkins UI
-                publishHTML(target: [
-                    allowMissing: false,
-                    alwaysLinkToLastBuild: true,
-                    keepAll: true,
-                    reportDir: reportDir,
-                    reportFiles: 'StaticAnalysisReport.html',
-                    reportName: 'Salesforce Static Analysis Report'
-                ])
+                stage('Static Code Analysis') {
+                    if (isUnix()) {
+                        sh """
+                            mkdir -p ${reportDir}
 
-                // Publish SARIF report to Warnings NG + Quality Gates
-                recordIssues(
-                    tools: [sarif(
-                        name: 'Salesforce Code Analyzer',
-                        pattern: "${sarifReport}"
-                    )],
-                    qualityGates: [
-                        [threshold: 1, type: 'TOTAL_ERROR', unstable: false],  // fail if any error
-                        [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],  // fail if any high
-                        [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]   // unstable if >=5 medium
-                    ]
-                )
-            }
+                            sf scanner:run --target "force-app/main/default/classes" \
+                                           --engine pmd \
+                                           --format html \
+                                           --outfile "${htmlReport}" || true
 
-            stage('Authenticate Dev Org') { 
-                authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
-            }
+                            sf scanner:run --target "force-app/main/default/classes" \
+                                           --engine pmd \
+                                           --format sarif \
+                                           --outfile "${sarifReport}" || true
+                        """
+                    } else {
+                        bat """
+                            if not exist ${reportDir} mkdir ${reportDir}
 
-            stage('Deploy to Dev Org') { 
-                deployToOrg(DEV_ORG_ALIAS)
+                            sf scanner:run --target "force-app/main/default/classes" ^
+                                           --engine pmd ^
+                                           --format html ^
+                                           --outfile "${htmlReport}" || exit 0
+
+                            sf scanner:run --target "force-app/main/default/classes" ^
+                                           --engine pmd ^
+                                           --format sarif ^
+                                           --outfile "${sarifReport}" || exit 0
+                        """
+                    }
+                }
+
+                stage('Publish Reports') {
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: reportDir,
+                        reportFiles: 'StaticAnalysisReport.html',
+                        reportName: 'Salesforce Static Analysis Report'
+                    ])
+
+                    recordIssues(
+                        tools: [sarif(
+                            name: 'Salesforce Code Analyzer',
+                            pattern: "${sarifReport}"
+                        )],
+                        qualityGates: [
+                            [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
+                            [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
+                            [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
+                        ]
+                    )
+                }
+
+                stage('Authenticate Dev Org') {
+                    authenticateOrg()
+                }
+
+                stage('Deploy to Dev Org') {
+                    deployToOrg()
+                }
             }
         }
     } catch (err) {
