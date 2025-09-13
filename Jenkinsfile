@@ -69,46 +69,70 @@ node {
             // Static Code Analysis
             // ------------------------
             stage('Static Code Analysis') {
-                echo "🔎 Running PMD Static Code Analysis..."
+    echo "🔎 Running PMD Static Code Analysis..."
 
-                if (isUnix()) {
-                    sh """
-                        mkdir -p ${reportDir}
+    if (isUnix()) {
+        sh """
+            mkdir -p ${reportDir}
+            cd "${env.WORKSPACE}"
 
-                        # Run PMD XML report
-                        cd "${env.WORKSPACE}"
-                        sf scanner:run --target "force-app/main/default/classes" \
-                                       --engine pmd \
-                                       --format xml \
-                                       --outfile "${xmlReport}" || true
-                    """
-                } else {
-                    bat """
-                        if not exist "${reportDir}" mkdir "${reportDir}"
-                        cd "%WORKSPACE%"
-                        sf scanner:run --target "force-app/main/default/classes" ^
-                                       --engine pmd ^
-                                       --format xml ^
-                                       --outfile "${xmlReport}" || exit 0
-                    """
-                }
+            # Run PMD XML report
+            sf scanner:run --target "force-app/main/default/classes" \
+                           --engine pmd \
+                           --format xml \
+                           --outfile "${xmlReport}" || true
 
-                // ------------------------
-                // Publish PMD XML in Jenkins UI
-                // ------------------------
-                if (fileExists(xmlReport)) {
-                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+            # Run PMD HTML report
+            sf scanner:run --target "force-app/main/default/classes" \
+                           --engine pmd \
+                           --format html \
+                           --outfile "${htmlReport}" || true
+        """
+    } else {
+        bat """
+            if not exist "${reportDir}" mkdir "${reportDir}"
+            cd "%WORKSPACE%"
 
-                    recordIssues(
-                        tools: [pmd(pattern: xmlReport)],
-                        skipFailedBuild: false
-                    )
+            :: Run PMD XML report
+            sf scanner:run --target "force-app/main/default/classes" ^
+                           --engine pmd ^
+                           --format xml ^
+                           --outfile "${xmlReport}" || exit 0
 
-                    echo "✅ PMD analysis published in Jenkins UI."
-                } else {
-                    error "⚠️ PMD XML report not found! Check Salesforce CLI and working directory."
-                }
-            }
+            :: Run PMD HTML report
+            sf scanner:run --target "force-app/main/default/classes" ^
+                           --engine pmd ^
+                           --format html ^
+                           --outfile "${htmlReport}" || exit 0
+        """
+    }
+
+    if (fileExists(xmlReport)) {
+        archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+
+        // ✅ Show results in Jenkins UI
+        recordIssues(
+            tools: [pmdParser(pattern: xmlReport)],
+            skipFailedBuild: false
+        )
+
+        // ✅ Publish nice HTML report
+        publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: "${reportDir}",
+            reportFiles: "StaticAnalysisReport.html",
+            reportName: "PMD Static Analysis Report"
+        ])
+
+        echo "✅ PMD analysis published in Jenkins UI and HTML report."
+    } else {
+        error "⚠️ PMD XML report not found! Check Salesforce CLI and working directory."
+    }
+}
+
+
 
 
 
