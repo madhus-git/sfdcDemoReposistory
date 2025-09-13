@@ -42,9 +42,12 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            def reportDir   = isUnix() ? "${env.WORKSPACE}/pmd-report-html" : "${env.WORKSPACE}\\pmd-report-html"
-            def htmlReport  = "${reportDir}" + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
-            def sarifReport = "${reportDir}" + (isUnix() ? "/pmd-report.sarif" : "\\pmd-report.sarif")
+            // --------------------------
+            // Use workspace-relative path for artifacts
+            // --------------------------
+            def reportDir   = 'pmd-report-html'
+            def htmlReport  = reportDir + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
+            def sarifReport = reportDir + (isUnix() ? "/pmd-report.sarif" : "\\pmd-report.sarif")
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
@@ -67,9 +70,9 @@ node {
                 }
 
                 // --------------------------
-                // Install prerequisite
+                // Install Salesforce CLI if missing
                 // --------------------------
-                stage('Install prerequisite') {
+                stage('Install Salesforce CLI') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -116,15 +119,15 @@ node {
                         bat """
                             if not exist "${reportDir}" mkdir "${reportDir}"
 
-                            sf scanner:run --target "force-app/main/default/classes" ^ 
-                                           --engine pmd ^ 
-                                           --format html ^ 
-                                           --outfile "${htmlReport}" || exit 0
+                            sf scanner:run --target "force-app/main/default/classes" ^
+                                           --engine pmd ^
+                                           --format html ^
+                                           --outfile "%WORKSPACE%\\${htmlReport}" || exit 0
 
-                            sf scanner:run --target "force-app/main/default/classes" ^ 
-                                           --engine pmd ^ 
-                                           --format sarif ^ 
-                                           --outfile "${sarifReport}" || exit 0
+                            sf scanner:run --target "force-app/main/default/classes" ^
+                                           --engine pmd ^
+                                           --format sarif ^
+                                           --outfile "%WORKSPACE%\\${sarifReport}" || exit 0
                         """
                     }
                 }
@@ -144,6 +147,7 @@ node {
                 // Publish Reports
                 // --------------------------
                 stage('Publish Reports') {
+                    // Always use workspace-relative path
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
                     publishHTML(target: [
