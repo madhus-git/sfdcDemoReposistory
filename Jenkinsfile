@@ -70,7 +70,7 @@ node {
                 }
 
                 // --------------------------
-                // Install Salesforce CLI if missing
+                // Install Salesforce CLI
                 // --------------------------
                 stage('Install Salesforce CLI') {
                     if (isUnix()) {
@@ -105,14 +105,14 @@ node {
                         sh """
                             mkdir -p ${reportDir}
 
-                            sf scanner:run --target "force-app/main/default/classes" \
-                                           --engine pmd \
-                                           --format html \
+                            sf scanner:run --target "force-app/main/default/classes" \\
+                                           --engine pmd \\
+                                           --format html \\
                                            --outfile "${htmlReport}" || true
 
-                            sf scanner:run --target "force-app/main/default/classes" \
-                                           --engine pmd \
-                                           --format sarif \
+                            sf scanner:run --target "force-app/main/default/classes" \\
+                                           --engine pmd \\
+                                           --format sarif \\
                                            --outfile "${sarifReport}" || true
                         """
                     } else {
@@ -155,7 +155,8 @@ node {
                         keepAll: true,
                         reportDir: reportDir,
                         reportFiles: 'StaticAnalysisReport.html',
-                        reportName: 'Salesforce Static Analysis Report'
+                        reportName: 'Salesforce Static Analysis Report',
+                        reportTitles: 'Salesforce Static Analysis Report'
                     ])
 
                     recordIssues(
@@ -192,5 +193,17 @@ node {
         throw err
     } finally {
         echo "Pipeline completed."
+    }
+}
+
+// ==============================
+// Post Actions
+// ==============================
+post {
+    success {
+        script {
+            def reportUrl = "${env.BUILD_URL}Salesforce_20Static_20Analysis_20Report/"
+            echo "👉 Salesforce Static Analysis Report available at: ${reportUrl}"
+        }
     }
 }
