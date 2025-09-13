@@ -41,9 +41,10 @@ node {
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
-            def reportDir   = 'pmd-report-html'
-            def htmlReport  = "${reportDir}/StaticAnalysisReport.html"
-            def sarifReport = "${reportDir}/pmd-report.sarif"
+
+            def reportDir   = isUnix() ? "${env.WORKSPACE}/pmd-report-html" : "${env.WORKSPACE}\\pmd-report-html"
+            def htmlReport  = "${reportDir}" + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
+            def sarifReport = "${reportDir}" + (isUnix() ? "/pmd-report.sarif" : "\\pmd-report.sarif")
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
@@ -66,7 +67,7 @@ node {
                 }
 
                 // --------------------------
-                // Install Salesforce CLI
+                // Install prerequisite
                 // --------------------------
                 stage('Install prerequisite') {
                     if (isUnix()) {
@@ -113,7 +114,7 @@ node {
                         """
                     } else {
                         bat """
-                            if not exist ${reportDir} mkdir ${reportDir}
+                            if not exist "${reportDir}" mkdir "${reportDir}"
 
                             sf scanner:run --target "force-app/main/default/classes" ^ 
                                            --engine pmd ^ 
@@ -125,6 +126,17 @@ node {
                                            --format sarif ^ 
                                            --outfile "${sarifReport}" || exit 0
                         """
+                    }
+                }
+
+                // --------------------------
+                // Verify Reports
+                // --------------------------
+                stage('Verify Reports') {
+                    if (isUnix()) {
+                        sh "ls -l ${reportDir}"
+                    } else {
+                        bat "dir ${reportDir}"
                     }
                 }
 
