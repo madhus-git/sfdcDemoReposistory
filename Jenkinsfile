@@ -144,13 +144,13 @@ node {
                 }
 
                 // --------------------------
-                // Publish Reports (Fixed)
+                // Publish Reports
                 // --------------------------
                 stage('Publish Reports') {
-                    // Save reports as build artifacts
+                    // Archive all reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // Add HTML report in Jenkins UI
+                    // HTML Publisher (inline view)
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -158,10 +158,11 @@ node {
                         reportDir: reportDir,
                         reportFiles: 'StaticAnalysisReport.html',
                         reportName: 'Salesforce Static Analysis Report',
-                        reportTitles: 'Salesforce Static Analysis Report'
+                        reportTitles: 'Salesforce Static Analysis Report',
+                        escapeUnderscores: false
                     ])
 
-                    // Parse SARIF for trend charts
+                    // Warnings NG plugin
                     recordIssues(
                         tools: [sarif(
                             name: 'Salesforce Code Analyzer',
