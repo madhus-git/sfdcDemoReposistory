@@ -14,10 +14,10 @@ def authenticateOrg() {
     } else {
         bat '''
             echo Authenticating to Salesforce Org: %ORG_ALIAS%...
-            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^
-                             --jwt-key-file %JWT_KEY_FILE% ^
-                             --username %SFDC_USERNAME% ^
-                             --alias %ORG_ALIAS% ^
+            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^ 
+                             --jwt-key-file %JWT_KEY_FILE% ^ 
+                             --username %SFDC_USERNAME% ^ 
+                             --alias %ORG_ALIAS% ^ 
                              --instance-url %SFDC_HOST%
         '''
     }
@@ -59,69 +59,134 @@ node {
                     checkout scm
                 }
 
+                stage('Install Salesforce CLI') {
+                    steps {
+                        script {
+                            if (isUnix()) {
+                                sh '''
+                                    if ! command -v sf >/dev/null 2>&1; then
+                                        echo "Salesforce CLI not found, installing..."
+                                        npm install --global @salesforce/cli
+                                    else
+                                        echo "Salesforce CLI is already installed."
+                                        sf --version
+                                    fi
+                                '''
+                            } else {
+                                bat '''
+                                    where sf >nul 2>nul
+                                    if %ERRORLEVEL% neq 0 (
+                                        echo Salesforce CLI not found, installing...
+                                        npm install --global @salesforce/cli
+                                    ) else (
+                                        echo Salesforce CLI is already installed.
+                                        sf --version
+                                    )
+                                '''
+                            }
+                        }
+                    }
+                }
+
                 stage('Static Code Analysis') {
-                    if (isUnix()) {
-                        sh """
-                            mkdir -p ${reportDir}
+                    steps {
+                        script {
+                            if (isUnix()) {
+                                sh """
+                                    mkdir -p ${reportDir}
 
-                            sf scanner:run --target "force-app/main/default/classes" \
-                                           --engine pmd \
-                                           --format html \
-                                           --outfile "${htmlReport}" || true
+                                    sf scanner:run --target "force-app/main/default/classes" \
+                                                   --engine pmd \
+                                                   --format html \
+                                                   --outfile "${htmlReport}" || true
 
-                            sf scanner:run --target "force-app/main/default/classes" \
-                                           --engine pmd \
-                                           --format sarif \
-                                           --outfile "${sarifReport}" || true
-                        """
-                    } else {
-                        bat """
-                            if not exist ${reportDir} mkdir ${reportDir}
+                                    sf scanner:run --target "force-app/main/default/classes" \
+                                                   --engine pmd \
+                                                   --format sarif \
+                                                   --outfile "${sarifReport}" || true
+                                """
+                            } else {
+                                bat """
+                                    if not exist ${reportDir} mkdir ${reportDir}
 
-                            sf scanner:run --target "force-app/main/default/classes" ^
-                                           --engine pmd ^
-                                           --format html ^
-                                           --outfile "${htmlReport}" || exit 0
+                                    sf scanner:run --target "force-app/main/default/classes" ^ 
+                                                   --engine pmd ^ 
+                                                   --format html ^ 
+                                                   --outfile "${htmlReport}" || exit 0
 
-                            sf scanner:run --target "force-app/main/default/classes" ^
-                                           --engine pmd ^
-                                           --format sarif ^
-                                           --outfile "${sarifReport}" || exit 0
-                        """
+                                    sf scanner:run --target "force-app/main/default/classes" ^ 
+                                                   --engine pmd ^ 
+                                                   --format sarif ^ 
+                                                   --outfile "${sarifReport}" || exit 0
+                                """
+                            }
+                        }
+                    }
+                }
+
+                stage('Copy Local Report (Optional)') {
+                    steps {
+                        script {
+                            if (!fileExists(htmlReport)) {
+                                if (isUnix()) {
+                                    sh """
+                                        mkdir -p ${reportDir}
+                                        cp /path/to/local/StaticAnalysisReport.html ${htmlReport}
+                                    """
+                                } else {
+                                    bat """
+                                        if not exist ${reportDir} mkdir ${reportDir}
+                                        copy "C:\\path\\to\\local\\StaticAnalysisReport.html" ${htmlReport}
+                                    """
+                                }
+                            }
+                        }
                     }
                 }
 
                 stage('Publish Reports') {
-                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+                    steps {
+                        script {
+                            archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: reportDir,
-                        reportFiles: 'StaticAnalysisReport.html',
-                        reportName: 'Salesforce Static Analysis Report'
-                    ])
+                            publishHTML(target: [
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: reportDir,
+                                reportFiles: 'StaticAnalysisReport.html',
+                                reportName: 'Salesforce Static Analysis Report'
+                            ])
 
-                    recordIssues(
-                        tools: [sarif(
-                            name: 'Salesforce Code Analyzer',
-                            pattern: "${sarifReport}"
-                        )],
-                        qualityGates: [
-                            [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
-                            [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
-                            [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
-                        ]
-                    )
+                            recordIssues(
+                                tools: [sarif(
+                                    name: 'Salesforce Code Analyzer',
+                                    pattern: "${sarifReport}"
+                                )],
+                                qualityGates: [
+                                    [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
+                                    [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
+                                    [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
+                                ]
+                            )
+                        }
+                    }
                 }
 
                 stage('Authenticate Dev Org') {
-                    authenticateOrg()
+                    steps {
+                        script {
+                            authenticateOrg()
+                        }
+                    }
                 }
 
                 stage('Deploy to Dev Org') {
-                    deployToOrg()
+                    steps {
+                        script {
+                            deployToOrg()
+                        }
+                    }
                 }
             }
         }
