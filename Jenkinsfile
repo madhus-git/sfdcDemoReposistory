@@ -68,7 +68,7 @@ node {
                 // --------------------------
                 // Install Salesforce CLI
                 // --------------------------
-                stage('Install Salesforce CLI') {
+                stage('Install prerequisite') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -125,33 +125,6 @@ node {
                                            --format sarif ^ 
                                            --outfile "${sarifReport}" || exit 0
                         """
-                    }
-                }
-
-                // --------------------------
-                // Copy Local Report (Optional)
-                // --------------------------
-                stage('Copy Local Report (Optional)') {
-                    if (!fileExists(htmlReport)) {
-                        echo "StaticAnalysisReport.html not found, copying from local path..."
-
-                        // Replace this path with your actual local HTML report if needed
-                        def localReportPath = isUnix() ? "/home/jenkins/StaticAnalysisReport.html" :
-                                                         "C:\\Users\\k.sudha.madhuri\\.jenkins\\workspace\\MyFirstSF_Job\\StaticAnalysisReport.html"
-
-                        if (isUnix()) {
-                            sh """
-                                mkdir -p ${reportDir}
-                                cp "${localReportPath}" "${htmlReport}"
-                            """
-                        } else {
-                            bat """
-                                if not exist ${reportDir} mkdir ${reportDir}
-                                copy "${localReportPath}" "${htmlReport}"
-                            """
-                        }
-                    } else {
-                        echo "StaticAnalysisReport.html already exists, skipping copy."
                     }
                 }
 
