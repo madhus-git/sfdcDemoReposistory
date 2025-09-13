@@ -108,8 +108,10 @@ node {
         reportName: 'Salesforce Static Analysis Report'
     ])
 
-    // Publish SARIF report to Warnings NG
+    // Publish SARIF report to Warnings NG (this enables the Trend graph)
     recordIssues(
+        enabledForFailure: true,   // still show results even if build failed
+        aggregatingResults: true,  // combine results if multiple scanners
         tools: [sarif(
             name: 'Salesforce Code Analyzer',
             pattern: 'pmd-report-html/pmd-report.sarif.json'
