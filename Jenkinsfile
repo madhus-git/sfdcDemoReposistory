@@ -3,23 +3,23 @@
 // ==============================
 def authenticateOrg() {
     if (isUnix()) {
-        sh '''
+        sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
             sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
                              --jwt-key-file "$JWT_KEY_FILE" \
                              --username "$SFDC_USERNAME" \
                              --alias "$ORG_ALIAS" \
                              --instance-url "$SFDC_HOST"
-        '''
+        """
     } else {
-        bat '''
+        bat """
             echo Authenticating to Salesforce Org: %ORG_ALIAS%...
             sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^ 
                              --jwt-key-file %JWT_KEY_FILE% ^ 
                              --username %SFDC_USERNAME% ^ 
                              --alias %ORG_ALIAS% ^ 
                              --instance-url %SFDC_HOST%
-        '''
+        """
     }
 }
 
@@ -50,143 +50,143 @@ node {
                 "ORG_ALIAS=projectdemosfdc"
             ]) {
 
+                // --------------------------
+                // Clean Workspace
+                // --------------------------
                 stage('Clean Workspace') {
                     cleanWs()
                     echo "Workspace cleaned successfully!"
                 }
 
+                // --------------------------
+                // Checkout Source
+                // --------------------------
                 stage('Checkout Source') {
                     checkout scm
                 }
 
+                // --------------------------
+                // Install Salesforce CLI
+                // --------------------------
                 stage('Install Salesforce CLI') {
-                    steps {
-                        script {
-                            if (isUnix()) {
-                                sh '''
-                                    if ! command -v sf >/dev/null 2>&1; then
-                                        echo "Salesforce CLI not found, installing..."
-                                        npm install --global @salesforce/cli
-                                    else
-                                        echo "Salesforce CLI is already installed."
-                                        sf --version
-                                    fi
-                                '''
-                            } else {
-                                bat '''
-                                    where sf >nul 2>nul
-                                    if %ERRORLEVEL% neq 0 (
-                                        echo Salesforce CLI not found, installing...
-                                        npm install --global @salesforce/cli
-                                    ) else (
-                                        echo Salesforce CLI is already installed.
-                                        sf --version
-                                    )
-                                '''
-                            }
-                        }
-                    }
-                }
-
-                stage('Static Code Analysis') {
-                    steps {
-                        script {
-                            if (isUnix()) {
-                                sh """
-                                    mkdir -p ${reportDir}
-
-                                    sf scanner:run --target "force-app/main/default/classes" \
-                                                   --engine pmd \
-                                                   --format html \
-                                                   --outfile "${htmlReport}" || true
-
-                                    sf scanner:run --target "force-app/main/default/classes" \
-                                                   --engine pmd \
-                                                   --format sarif \
-                                                   --outfile "${sarifReport}" || true
-                                """
-                            } else {
-                                bat """
-                                    if not exist ${reportDir} mkdir ${reportDir}
-
-                                    sf scanner:run --target "force-app/main/default/classes" ^ 
-                                                   --engine pmd ^ 
-                                                   --format html ^ 
-                                                   --outfile "${htmlReport}" || exit 0
-
-                                    sf scanner:run --target "force-app/main/default/classes" ^ 
-                                                   --engine pmd ^ 
-                                                   --format sarif ^ 
-                                                   --outfile "${sarifReport}" || exit 0
-                                """
-                            }
-                        }
-                    }
-                }
-
-                stage('Copy Local Report (Optional)') {
-                    steps {
-                        script {
-                            if (!fileExists(htmlReport)) {
-                                if (isUnix()) {
-                                    sh """
-                                        mkdir -p ${reportDir}
-                                        cp /path/to/local/StaticAnalysisReport.html ${htmlReport}
-                                    """
-                                } else {
-                                    bat """
-                                        if not exist ${reportDir} mkdir ${reportDir}
-                                        copy "C:\\path\\to\\local\\StaticAnalysisReport.html" ${htmlReport}
-                                    """
-                                }
-                            }
-                        }
-                    }
-                }
-
-                stage('Publish Reports') {
-                    steps {
-                        script {
-                            archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
-
-                            publishHTML(target: [
-                                allowMissing: false,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: reportDir,
-                                reportFiles: 'StaticAnalysisReport.html',
-                                reportName: 'Salesforce Static Analysis Report'
-                            ])
-
-                            recordIssues(
-                                tools: [sarif(
-                                    name: 'Salesforce Code Analyzer',
-                                    pattern: "${sarifReport}"
-                                )],
-                                qualityGates: [
-                                    [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
-                                    [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
-                                    [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
-                                ]
+                    if (isUnix()) {
+                        sh '''
+                            if ! command -v sf >/dev/null 2>&1; then
+                                echo "Salesforce CLI not found, installing..."
+                                npm install --global @salesforce/cli
+                            else
+                                echo "Salesforce CLI is already installed."
+                                sf --version
+                            fi
+                        '''
+                    } else {
+                        bat '''
+                            where sf >nul 2>nul
+                            if %ERRORLEVEL% neq 0 (
+                                echo Salesforce CLI not found, installing...
+                                npm install --global @salesforce/cli
+                            ) else (
+                                echo Salesforce CLI is already installed.
+                                sf --version
                             )
+                        '''
+                    }
+                }
+
+                // --------------------------
+                // Static Code Analysis
+                // --------------------------
+                stage('Static Code Analysis') {
+                    if (isUnix()) {
+                        sh """
+                            mkdir -p ${reportDir}
+
+                            sf scanner:run --target "force-app/main/default/classes" \
+                                           --engine pmd \
+                                           --format html \
+                                           --outfile "${htmlReport}" || true
+
+                            sf scanner:run --target "force-app/main/default/classes" \
+                                           --engine pmd \
+                                           --format sarif \
+                                           --outfile "${sarifReport}" || true
+                        """
+                    } else {
+                        bat """
+                            if not exist ${reportDir} mkdir ${reportDir}
+
+                            sf scanner:run --target "force-app/main/default/classes" ^ 
+                                           --engine pmd ^ 
+                                           --format html ^ 
+                                           --outfile "${htmlReport}" || exit 0
+
+                            sf scanner:run --target "force-app/main/default/classes" ^ 
+                                           --engine pmd ^ 
+                                           --format sarif ^ 
+                                           --outfile "${sarifReport}" || exit 0
+                        """
+                    }
+                }
+
+                // --------------------------
+                // Copy Local Report (Optional)
+                // --------------------------
+                stage('Copy Local Report (Optional)') {
+                    if (!fileExists(htmlReport)) {
+                        if (isUnix()) {
+                            sh """
+                                mkdir -p ${reportDir}
+                                cp /path/to/local/StaticAnalysisReport.html ${htmlReport}
+                            """
+                        } else {
+                            bat """
+                                if not exist ${reportDir} mkdir ${reportDir}
+                                copy "C:\\path\\to\\local\\StaticAnalysisReport.html" ${htmlReport}
+                            """
                         }
                     }
                 }
 
+                // --------------------------
+                // Publish Reports
+                // --------------------------
+                stage('Publish Reports') {
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: reportDir,
+                        reportFiles: 'StaticAnalysisReport.html',
+                        reportName: 'Salesforce Static Analysis Report'
+                    ])
+
+                    recordIssues(
+                        tools: [sarif(
+                            name: 'Salesforce Code Analyzer',
+                            pattern: "${sarifReport}"
+                        )],
+                        qualityGates: [
+                            [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
+                            [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
+                            [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
+                        ]
+                    )
+                }
+
+                // --------------------------
+                // Authenticate Dev Org
+                // --------------------------
                 stage('Authenticate Dev Org') {
-                    steps {
-                        script {
-                            authenticateOrg()
-                        }
-                    }
+                    authenticateOrg()
                 }
 
+                // --------------------------
+                // Deploy to Dev Org
+                // --------------------------
                 stage('Deploy to Dev Org') {
-                    steps {
-                        script {
-                            deployToOrg()
-                        }
-                    }
+                    deployToOrg()
                 }
             }
         }
