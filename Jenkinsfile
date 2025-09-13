@@ -1,6 +1,35 @@
-// ------------------------
-// Jenkinsfile - Salesforce CI/CD with Static Analysis Trend + Quality Gates
-// ------------------------
+// Utility Functions
+def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
+    if (isUnix()) {
+        sh """
+            echo "Authenticating to Salesforce Org: ${orgAlias}..."
+            sf org login jwt --client-id ${consumerKey} \
+                             --jwt-key-file ${jwtKeyFile} \
+                             --username ${username} \
+                             --alias ${orgAlias} \
+                             --instance-url ${sfdcHost}
+        """
+    } else {
+        bat """
+            echo Authenticating to Salesforce Org: ${orgAlias}...
+            sf org login jwt --client-id %${consumerKey}% \
+                             --jwt-key-file %${jwtKeyFile}% \
+                             --username %${username}% \
+                             --alias ${orgAlias} \
+                             --instance-url %${sfdcHost}%
+        """
+    }
+}
+
+def deployToOrg(orgAlias) {
+    if (isUnix()) {
+        sh "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+    } else {
+        bat "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+    }
+}
+
+// Main Pipeline
 node {
     try {
         withCredentials([
@@ -10,14 +39,14 @@ node {
         ]) {
 
             def SFDC_HOST   = 'https://login.salesforce.com'
-            def DEV_ORG     = 'dev'
+            def DEV_ORG_ALIAS = 'projectdemosfdc'
             def reportDir   = 'pmd-report-html'
             def htmlReport  = "${reportDir}/StaticAnalysisReport.html"
             def sarifReport = "${reportDir}/pmd-report.sarif"
 
             stage('Clean Workspace') {
                 cleanWs()
-                echo "✅ Workspace cleaned successfully!"
+                echo "Workspace cleaned successfully!"
             }
 
             stage('Checkout Source') {
@@ -84,15 +113,16 @@ node {
                 )
             }
 
-            // --- Optional deployment after code passes quality gate ---
-            // stage('Deploy to Dev Org') {
-            //     echo "🚀 Deploying to ${DEV_ORG}..."
-            //     bat "sf project deploy start --target-org ${DEV_ORG} --ignore-conflicts --wait 10"
-            // }
+            stage('Authenticate Dev Org') { 
+                authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
+            }
 
+            stage('Deploy to Dev Org') { 
+                deployToOrg(DEV_ORG_ALIAS)
+            }
         }
     } catch (err) {
-        echo "❌ Pipeline failed: ${err}"
+        echo "Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
         throw err
     } finally {
