@@ -113,7 +113,7 @@ node {
         // ✅ Show results in Jenkins UI
         recordIssues(
             tools: [pmdParser(pattern: xmlReport)],
-            skipFailedBuild: false
+            //skipFailedBuild: false
         )
 
         // ✅ Publish nice HTML report
