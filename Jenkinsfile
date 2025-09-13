@@ -147,37 +147,38 @@ node {
                 // Publish Reports
                 // --------------------------
                 stage('Publish Reports') {
-                    // Archive all reports
-                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+    // Archive all reports (for download)
+    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // HTML Publisher (inline view for PMD dashboard)
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: reportDir,
-                        reportFiles: 'StaticAnalysisReport.html',
-                        reportName: 'Salesforce Static Analysis Report',
-                        reportTitles: 'Salesforce Static Analysis Report',
-                        escapeUnderscores: false
-                    ])
+    // Ensure HTML report is published (this is the full interactive dashboard)
+    publishHTML(target: [
+        allowMissing: false,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: reportDir,
+        reportFiles: 'StaticAnalysisReport.html',
+        reportName: 'Salesforce PMD Dashboard',
+        reportTitles: 'Salesforce Static Analysis',
+        escapeUnderscores: false
+    ])
 
-                    // Warnings NG plugin (for SARIF summary & trend charts)
-                    recordIssues(
-                        tools: [sarif(
-                            name: 'Salesforce Code Analyzer',
-                            pattern: "${sarifReport}"
-                        )],
-                        qualityGates: [
-                            [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
-                            [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
-                            [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
-                        ]
-                    )
+    // SARIF to Warnings NG (for graphs & trends)
+    recordIssues(
+        tools: [sarif(
+            name: 'Salesforce Code Analyzer',
+            pattern: "${sarifReport}"
+        )],
+        qualityGates: [
+            [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
+            [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
+            [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
+        ]
+    )
 
-                    // Print Jenkins-hosted report URL
-                    echo "👉 Open Salesforce Report at: ${env.BUILD_URL}Salesforce_20Static_20Analysis_20Report/"
-                }
+    // Print Jenkins-hosted HTML report link
+    echo "👉 Open Salesforce PMD Dashboard: ${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
+}
+
 
                 // --------------------------
                 // Authenticate Dev Org
