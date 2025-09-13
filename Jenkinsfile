@@ -76,47 +76,42 @@ node {
             mkdir -p ${reportDir}
             cd "${env.WORKSPACE}"
 
-            # Run PMD XML report
-            sf scanner:run --target "force-app/main/default/classes" \
-                           --engine pmd \
-                           --format xml \
-                           --outfile "${xmlReport}" || true
-
-            # Run PMD HTML report
+            # Generate HTML report
             sf scanner:run --target "force-app/main/default/classes" \
                            --engine pmd \
                            --format html \
                            --outfile "${htmlReport}" || true
+
+            # Also generate JSON (for thresholds/metrics if needed)
+            sf scanner:run --target "force-app/main/default/classes" \
+                           --engine pmd \
+                           --format json \
+                           --outfile "${jsonReport}" || true
         """
     } else {
         bat """
             if not exist "${reportDir}" mkdir "${reportDir}"
             cd "%WORKSPACE%"
 
-            :: Run PMD XML report
-            sf scanner:run --target "force-app/main/default/classes" ^
-                           --engine pmd ^
-                           --format xml ^
-                           --outfile "${xmlReport}" || exit 0
-
-            :: Run PMD HTML report
+            :: Generate HTML report
             sf scanner:run --target "force-app/main/default/classes" ^
                            --engine pmd ^
                            --format html ^
                            --outfile "${htmlReport}" || exit 0
+
+            :: Also generate JSON
+            sf scanner:run --target "force-app/main/default/classes" ^
+                           --engine pmd ^
+                           --format json ^
+                           --outfile "${jsonReport}" || exit 0
         """
     }
 
-    if (fileExists(xmlReport)) {
+    if (fileExists(htmlReport)) {
+        // Archive artifacts for download
         archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-        // ✅ Show results in Jenkins UI
-        recordIssues(
-            tools: [pmdParser(pattern: xmlReport)],
-            //skipFailedBuild: false
-        )
-
-        // ✅ Publish nice HTML report
+        // Publish nice HTML report link in Jenkins
         publishHTML(target: [
             allowMissing: true,
             alwaysLinkToLastBuild: true,
@@ -126,11 +121,12 @@ node {
             reportName: "PMD Static Analysis Report"
         ])
 
-        echo "✅ PMD analysis published in Jenkins UI and HTML report."
+        echo "✅ PMD HTML report published in Jenkins."
     } else {
-        error "⚠️ PMD XML report not found! Check Salesforce CLI and working directory."
+        error "⚠️ PMD HTML report not found!"
     }
 }
+
 
 
 
