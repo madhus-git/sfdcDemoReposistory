@@ -178,6 +178,24 @@ node {
                 }
 
                 // --------------------------
+                // Add Links to Sidebar
+                // --------------------------
+                stage('Add Dashboard Links') {
+                    script {
+                        def pmdDashboardUrl  = "${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
+                        def sarifTrendUrl    = "${env.BUILD_URL}analysis/"
+
+                        currentBuild.description = """
+                            <a href='${pmdDashboardUrl}' target='_blank'>Salesforce PMD Dashboard</a><br/>
+                            <a href='${sarifTrendUrl}' target='_blank'>SARIF Warnings NG Trends</a>
+                        """
+                        echo "Links added to build sidebar:"
+                        echo "PMD Dashboard: ${pmdDashboardUrl}"
+                        echo "SARIF Trends: ${sarifTrendUrl}"
+                    }
+                }
+
+                // --------------------------
                 // Authenticate Dev Org
                 // --------------------------
                 stage('Authenticate Dev Org') {
