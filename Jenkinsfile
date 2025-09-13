@@ -72,7 +72,7 @@ node {
                 // --------------------------
                 // Install Salesforce CLI
                 // --------------------------
-                stage('Install Salesforce CLI') {
+                stage('Install prerequisite') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -192,18 +192,9 @@ node {
         currentBuild.result = 'FAILURE'
         throw err
     } finally {
-        echo "Pipeline completed."
+        // Always print clickable report URL in console
+                echo "👉 Open report at: ${env.BUILD_URL}Salesforce_20Static_20Analysis_20Report/"
     }
 }
 
-// ==============================
-// Post Actions
-// ==============================
-post {
-    success {
-        script {
-            def reportUrl = "${env.BUILD_URL}Salesforce_20Static_20Analysis_20Report/"
-            echo "👉 Salesforce Static Analysis Report available at: ${reportUrl}"
-        }
-    }
-}
+
