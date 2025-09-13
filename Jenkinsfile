@@ -5,15 +5,16 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \\
-                             --jwt-key-file "$JWT_KEY_FILE" \\
-                             --username "$SFDC_USERNAME" \\
-                             --alias "$ORG_ALIAS" \\
+            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
+                             --jwt-key-file "$JWT_KEY_FILE" \
+                             --username "$SFDC_USERNAME" \
+                             --alias "$ORG_ALIAS" \
                              --instance-url "$SFDC_HOST"
         """
     } else {
         bat """
-            echo Authenticating to Salesforce Org: %ORG_ALIAS%
+            echo Authenticating to Salesforce Org: %ORG_ALIAS%...
+
             sf org login jwt ^
                 --client-id %CONNECTED_APP_CONSUMER_KEY% ^
                 --jwt-key-file %JWT_KEY_FILE% ^
@@ -43,9 +44,10 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
+            // Workspace-relative path for artifacts
             def reportDir   = 'pmd-report-html'
-            def htmlReport  = "${reportDir}/StaticAnalysisReport.html"
-            def sarifReport = "${reportDir}/pmd-report.sarif"
+            def htmlReport  = reportDir + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
+            def sarifReport = reportDir + (isUnix() ? "/pmd-report.sarif" : "\\pmd-report.sarif")
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
@@ -70,7 +72,7 @@ node {
                 // --------------------------
                 // Install Salesforce CLI
                 // --------------------------
-                stage('Install Salesforce CLI') {
+                stage('Install prerequisite') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -103,14 +105,14 @@ node {
                         sh """
                             mkdir -p ${reportDir}
 
-                            sf scanner:run --target "force-app/main/default/classes" \\
-                                           --engine pmd \\
-                                           --format html \\
+                            sf scanner:run --target "force-app/main/default/classes" \
+                                           --engine pmd \
+                                           --format html \
                                            --outfile "${htmlReport}" || true
 
-                            sf scanner:run --target "force-app/main/default/classes" \\
-                                           --engine pmd \\
-                                           --format sarif \\
+                            sf scanner:run --target "force-app/main/default/classes" \
+                                           --engine pmd \
+                                           --format sarif \
                                            --outfile "${sarifReport}" || true
                         """
                     } else {
@@ -120,12 +122,12 @@ node {
                             sf scanner:run --target "force-app/main/default/classes" ^
                                            --engine pmd ^
                                            --format html ^
-                                           --outfile "${htmlReport}" || exit 0
+                                           --outfile "%WORKSPACE%\\${htmlReport}" || exit 0
 
                             sf scanner:run --target "force-app/main/default/classes" ^
                                            --engine pmd ^
                                            --format sarif ^
-                                           --outfile "${sarifReport}" || exit 0
+                                           --outfile "%WORKSPACE%\\${sarifReport}" || exit 0
                         """
                     }
                 }
@@ -134,7 +136,6 @@ node {
                 // Verify Reports
                 // --------------------------
                 stage('Verify Reports') {
-                    echo "Verifying generated reports..."
                     if (isUnix()) {
                         sh "ls -l ${reportDir}"
                     } else {
@@ -146,8 +147,10 @@ node {
                 // Publish Reports
                 // --------------------------
                 stage('Publish Reports') {
+                    // Archive all reports (for download)
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
+                    // Ensure HTML report is published (this is the full interactive dashboard)
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -159,6 +162,7 @@ node {
                         escapeUnderscores: false
                     ])
 
+                    // SARIF to Warnings NG (for graphs & trends)
                     recordIssues(
                         tools: [sarif(
                             name: 'Salesforce Code Analyzer',
@@ -170,23 +174,22 @@ node {
                             [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
                         ]
                     )
-
-                    echo "👉 Open Salesforce PMD Dashboard: ${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
                 }
 
                 // --------------------------
-                // Add Links to Sidebar
+                // Add Dashboard Links (Safe HTML)
                 // --------------------------
                 stage('Add Dashboard Links') {
-                    script {
-                        def pmdDashboardUrl  = "${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
-                        def sarifTrendUrl    = "${env.BUILD_URL}analysis/"
+                    steps {
+                        script {
+                            def pmdDashboardUrl  = "${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
+                            def sarifTrendUrl    = "${env.BUILD_URL}analysis/"
 
-                        // Use rawBuild to allow HTML rendering
-                        currentBuild.rawBuild.setDescription("""
-                            <a href='${pmdDashboardUrl}' target='_blank'>Salesforce PMD Dashboard</a><br/>
-                            <a href='${sarifTrendUrl}' target='_blank'>SARIF Warnings NG Trends</a>
-                        """)
+                            wrap([$class: 'BuildDescriptionSetter', description: """
+                                <a href='${pmdDashboardUrl}' target='_blank'>Salesforce PMD Dashboard</a><br/>
+                                <a href='${sarifTrendUrl}' target='_blank'>SARIF Warnings NG Trends</a>
+                            """])
+                        }
                     }
                 }
 
