@@ -69,63 +69,46 @@ node {
             // Static Code Analysis
             // ------------------------
             stage('Static Code Analysis') {
-    echo "🔎 Running PMD Static Code Analysis..."
+            steps {
+                sh '''
+                    # Run Salesforce Code Analyzer twice:
+                    # 1) Generate HTML report for human-readable view
+                    # 2) Generate SARIF report for Jenkins Warnings NG integration
+                    
+                    mkdir -p pmd-report-html
 
-    if (isUnix()) {
-        sh """
-            mkdir -p ${reportDir}
-            cd "${env.WORKSPACE}"
+                    sf scanner:run --target "force-app/main/default/classes" \
+                                   --engine pmd \
+                                   --format html \
+                                   --outfile "pmd-report-html/StaticAnalysisReport.html" || exit 0
 
-            # Generate HTML report
-            sf scanner:run --target "force-app/main/default/classes" \
-                           --engine pmd \
-                           --format html \
-                           --outfile "${htmlReport}" || true
-
-            # Also generate JSON (for thresholds/metrics if needed)
-            sf scanner:run --target "force-app/main/default/classes" \
-                           --engine pmd \
-                           --format json \
-                           --outfile "${jsonReport}" || true
-        """
-    } else {
-        bat """
-            if not exist "${reportDir}" mkdir "${reportDir}"
-            cd "%WORKSPACE%"
-
-            :: Generate HTML report
-            sf scanner:run --target "force-app/main/default/classes" ^
-                           --engine pmd ^
-                           --format html ^
-                           --outfile "${htmlReport}" || exit 0
-
-            :: Also generate JSON
-            sf scanner:run --target "force-app/main/default/classes" ^
-                           --engine pmd ^
-                           --format json ^
-                           --outfile "${jsonReport}" || exit 0
-        """
+                    sf scanner:run --target "force-app/main/default/classes" \
+                                   --engine pmd \
+                                   --format sarif \
+                                   --outfile "pmd-report-html/pmd-report.sarif.json" || exit 0
+                '''
+            }
+        }
     }
+    post {
+        always {
+            // Archive all reports
+            archiveArtifacts artifacts: 'pmd-report-html/**', fingerprint: true
 
-    if (fileExists(htmlReport)) {
-        // Archive artifacts for download
-        archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+            // Publish HTML report (appears in left-hand menu)
+            publishHTML([[
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pmd-report-html',
+                reportFiles: 'StaticAnalysisReport.html',
+                reportName: 'Salesforce Static Analysis Report'
+            ]])
 
-        // Publish nice HTML report link in Jenkins
-        publishHTML(target: [
-            allowMissing: true,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: "${reportDir}",
-            reportFiles: "StaticAnalysisReport.html",
-            reportName: "PMD Static Analysis Report"
-        ])
-
-        echo "✅ PMD HTML report published in Jenkins."
-    } else {
-        error "⚠️ PMD HTML report not found!"
-    }
-}
+            // Publish SARIF report to Warnings NG (trend charts, drill down)
+            recordIssues tools: [sarif(name: 'Salesforce Code Analyzer')],
+                         pattern: 'pmd-report-html/pmd-report.sarif.json'
+        }
 
 
 
