@@ -150,7 +150,7 @@ node {
                     // Archive all reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // HTML Publisher (inline view)
+                    // HTML Publisher (inline view for PMD dashboard)
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -162,7 +162,7 @@ node {
                         escapeUnderscores: false
                     ])
 
-                    // Warnings NG plugin
+                    // Warnings NG plugin (for SARIF summary & trend charts)
                     recordIssues(
                         tools: [sarif(
                             name: 'Salesforce Code Analyzer',
