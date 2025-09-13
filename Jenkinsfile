@@ -110,8 +110,10 @@ node {
 
     // Publish SARIF report to Warnings NG
     recordIssues(
-        tools: [sarif(name: 'Salesforce Code Analyzer')],
-        pattern: 'pmd-report-html/pmd-report.sarif.json'
+        tools: [sarif(
+            name: 'Salesforce Code Analyzer',
+            pattern: 'pmd-report-html/pmd-report.sarif.json'
+        )]
     )
 }
 
