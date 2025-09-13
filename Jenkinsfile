@@ -1,47 +1,7 @@
 // ------------------------
-// Utility Functions
-// ------------------------
-def authenticateOrg(orgAlias, sfdcHost, consumerKey, jwtKeyFile, username) {
-    if (isUnix()) {
-        sh """
-            echo "Authenticating to Salesforce Org: ${orgAlias}..."
-            sf org login jwt --client-id ${consumerKey} \
-                             --jwt-key-file ${jwtKeyFile} \
-                             --username ${username} \
-                             --alias ${orgAlias} \
-                             --instance-url ${sfdcHost}
-        """
-    } else {
-        bat """
-            echo Authenticating to Salesforce Org: ${orgAlias}...
-            sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% ^
-                             --jwt-key-file %JWT_KEY_FILE% ^
-                             --username %SFDC_USERNAME% ^
-                             --alias ${orgAlias} ^
-                             --instance-url ${sfdcHost}
-        """
-    }
-}
-
-def deployToOrg(orgAlias) {
-    if (isUnix()) {
-        sh "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
-    } else {
-        bat "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
-    }
-}
-
-// ------------------------
-// Pipeline
+// Jenkinsfile - Salesforce CI/CD with Static Analysis Trend + Quality Gates
 // ------------------------
 node {
-    // Enable GitHub webhook trigger
-    properties([
-        pipelineTriggers([
-            pollSCM('H/1 * * * *')  // poll every 1 min
-        ])
-    ])
-
     try {
         withCredentials([
             string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
@@ -49,9 +9,11 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            def SFDC_HOST = 'https://login.salesforce.com'
-            def DEV_ORG_ALIAS = 'dev'
-            def reportDir = 'pmd-report-html'
+            def SFDC_HOST   = 'https://login.salesforce.com'
+            def DEV_ORG     = 'dev'
+            def reportDir   = 'pmd-report-html'
+            def htmlReport  = "${reportDir}/StaticAnalysisReport.html"
+            def sarifReport = "${reportDir}/pmd-report.sarif"
 
             stage('Clean Workspace') {
                 cleanWs()
@@ -70,12 +32,12 @@ node {
                         sf scanner:run --target "force-app/main/default/classes" \
                                        --engine pmd \
                                        --format html \
-                                       --outfile "${reportDir}/StaticAnalysisReport.html" || exit 0
+                                       --outfile "${htmlReport}" || true
 
                         sf scanner:run --target "force-app/main/default/classes" \
                                        --engine pmd \
                                        --format sarif \
-                                       --outfile "${reportDir}/pmd-report.sarif.json" || exit 0
+                                       --outfile "${sarifReport}" || true
                     """
                 } else {
                     bat """
@@ -84,52 +46,51 @@ node {
                         sf scanner:run --target "force-app/main/default/classes" ^
                                        --engine pmd ^
                                        --format html ^
-                                       --outfile "${reportDir}\\StaticAnalysisReport.html" || exit 0
+                                       --outfile "${htmlReport}" || exit 0
 
                         sf scanner:run --target "force-app/main/default/classes" ^
                                        --engine pmd ^
                                        --format sarif ^
-                                       --outfile "${reportDir}\\pmd-report.sarif.json" || exit 0
+                                       --outfile "${sarifReport}" || exit 0
                     """
                 }
             }
 
             stage('Publish Reports') {
-    // Archive raw reports
-    archiveArtifacts artifacts: 'pmd-report-html/**', fingerprint: true
+                // Archive raw reports
+                archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-    // Publish HTML report in Jenkins UI
-    publishHTML(target: [
-        allowMissing: false,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: 'pmd-report-html',
-        reportFiles: 'StaticAnalysisReport.html',
-        reportName: 'Salesforce Static Analysis Report'
-    ])
+                // Publish HTML report in Jenkins UI
+                publishHTML(target: [
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: reportDir,
+                    reportFiles: 'StaticAnalysisReport.html',
+                    reportName: 'Salesforce Static Analysis Report'
+                ])
 
-    // Publish SARIF report to Warnings NG (this enables the Trend graph)
-    recordIssues(
-        enabledForFailure: true,   // still show results even if build failed
-        aggregatingResults: true,  // combine results if multiple scanners
-        tools: [sarif(
-            name: 'Salesforce Code Analyzer',
-            pattern: 'pmd-report-html/pmd-report.sarif.json'
-        )]
-    )
-}
-
-            /* Uncomment when ready for deployment
-            stage('Authenticate Dev Org') {
-                authenticateOrg(DEV_ORG_ALIAS, SFDC_HOST, CONNECTED_APP_CONSUMER_KEY, JWT_KEY_FILE, SFDC_USERNAME)
+                // Publish SARIF report to Warnings NG + Quality Gates
+                recordIssues(
+                    tools: [sarif(
+                        name: 'Salesforce Code Analyzer',
+                        pattern: "${sarifReport}"
+                    )],
+                    qualityGates: [
+                        [threshold: 1, type: 'TOTAL_ERROR', unstable: false],  // fail if any error
+                        [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],  // fail if any high
+                        [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]   // unstable if >=5 medium
+                    ]
+                )
             }
 
-            stage('Deploy to Dev Org') {
-                deployToOrg(DEV_ORG_ALIAS)
-            }
-            */
+            // --- Optional deployment after code passes quality gate ---
+            // stage('Deploy to Dev Org') {
+            //     echo "🚀 Deploying to ${DEV_ORG}..."
+            //     bat "sf project deploy start --target-org ${DEV_ORG} --ignore-conflicts --wait 10"
+            // }
+
         }
-
     } catch (err) {
         echo "❌ Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
