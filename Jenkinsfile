@@ -47,7 +47,6 @@ node {
             // Workspace-relative path for artifacts
             def reportDir   = 'pmd-report-html'
             def htmlReport  = reportDir + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
-            def sarifReport = reportDir + (isUnix() ? "/pmd-report.sarif" : "\\pmd-report.sarif")
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
@@ -109,11 +108,6 @@ node {
                                            --engine pmd \\
                                            --format html \\
                                            --outfile "${htmlReport}" || true
-
-                            sf scanner:run --target "force-app/main/default/classes" \\
-                                           --engine pmd \\
-                                           --format sarif \\
-                                           --outfile "${sarifReport}" || true
                         """
                     } else {
                         bat """
@@ -123,11 +117,6 @@ node {
                                            --engine pmd ^
                                            --format html ^
                                            --outfile "%WORKSPACE%\\${htmlReport}" || exit 0
-
-                            sf scanner:run --target "force-app/main/default/classes" ^
-                                           --engine pmd ^
-                                           --format sarif ^
-                                           --outfile "%WORKSPACE%\\${sarifReport}" || exit 0
                         """
                     }
                 }
@@ -144,10 +133,10 @@ node {
                 }
 
                 // --------------------------
-                // Publish Reports (HTML + SARIF)
+                // Publish Reports (HTML only)
                 // --------------------------
                 stage('Publish Reports') {
-                    // Archive all reports
+                    // Archive reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
                     // Publish HTML report (clickable in Jenkins sidebar)
@@ -162,22 +151,8 @@ node {
                         escapeUnderscores: false
                     ])
 
-                    // Publish SARIF to Warnings NG (trend graphs)
-                    recordIssues(
-                        tools: [sarif(
-                            name: 'Salesforce Code Analyzer',
-                            pattern: "${sarifReport}"
-                        )],
-                        qualityGates: [
-                            [threshold: 1, type: 'TOTAL_ERROR', unstable: false],
-                            [threshold: 1, type: 'TOTAL_HIGH',  unstable: false],
-                            [threshold: 5, type: 'TOTAL_NORMAL', unstable: true]
-                        ]
-                    )
-
-                    // Echo clickable links in console
-                    echo "👉 Salesforce PMD Dashboard: ${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
-                    echo "👉 SARIF Warnings NG Trends: ${env.BUILD_URL}analysis/"
+                    // Echo clickable link in console
+                    echo "Salesforce PMD Dashboard: ${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
                 }
 
                 // --------------------------
