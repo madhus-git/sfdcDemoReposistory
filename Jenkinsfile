@@ -72,7 +72,7 @@ node {
                 // --------------------------
                 // Install Salesforce CLI
                 // --------------------------
-                stage('Install Salesforce CLI') {
+                stage('Install prerequisite') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -183,14 +183,14 @@ node {
                 // --------------------------
                 // Authenticate Dev Org
                 // --------------------------
-                stage('Authenticate Dev Org') {
+                stage('Authenticate Org') {
                     authenticateOrg()
                 }
 
                 // --------------------------
                 // Deploy to Dev Org
                 // --------------------------
-                stage('Deploy to Dev Org') {
+                stage('Deploy to Org') {
                     deployToOrg()
                 }
             }
