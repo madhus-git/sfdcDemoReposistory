@@ -44,9 +44,8 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            // Workspace-relative path for artifacts
             def reportDir   = 'code-analyzer-report'
-            def htmlReport  = reportDir + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
+            def htmlReport  = 'StaticAnalysisReport.html'
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
@@ -103,19 +102,14 @@ node {
                     if (isUnix()) {
                         sh """
                             mkdir -p ${reportDir}
-
-                            # Run Code Analyzer v5.x:
-                            # - workspace: force-app (scan entire package)
-                            # - output-file: produce an HTML report (extension determines format)
-                            # - keep exit tolerant so pipeline doesn't fail on violations (change as needed)
-                            sf code-analyzer run --workspace force-app --output-file "${htmlReport}" || true
+                            sf code-analyzer run --workspace force-app \
+                                                 --output-file "${reportDir}/${htmlReport}" || true
                         """
                     } else {
                         bat """
                             if not exist "${reportDir}" mkdir "${reportDir}"
-
-                            rem Run Code Analyzer v5.x and write HTML report
-                            sf code-analyzer run --workspace force-app --output-file "%WORKSPACE%\\${reportDir}\\StaticAnalysisReport.html" || exit 0
+                            sf code-analyzer run --workspace force-app ^
+                                                 --output-file "%WORKSPACE%\\${reportDir}\\${htmlReport}" || exit 0
                         """
                     }
                 }
@@ -128,7 +122,11 @@ node {
                     }
                 }
 
+                // --------------------------
+                // Publish Reports (HTML + assets)
+                // --------------------------
                 stage('Publish Reports') {
+                    // Archive full directory (HTML + CSS + JS)
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
                     publishHTML(target: [
@@ -136,13 +134,13 @@ node {
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: reportDir,
-                        reportFiles: 'StaticAnalysisReport.html',
+                        reportFiles: htmlReport,
                         reportName: 'Salesforce Code Analyzer Dashboard',
                         reportTitles: 'Salesforce Static Analysis',
                         escapeUnderscores: false
                     ])
 
-                    echo "Salesforce Code Analyzer Dashboard: ${env.BUILD_URL}Code_20Analyzer_20Dashboard/"
+                    echo "Salesforce Code Analyzer Dashboard: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
                 }
 
                 stage('Authenticate Org') {
