@@ -47,24 +47,22 @@ node {
             def reportDir   = 'code-analyzer-report'
             def htmlDir     = 'html-report'
             def jsonReport  = 'results.json'
+            def htmlReport  = 'index.html'
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
                 "ORG_ALIAS=projectdemosfdc"
             ]) {
 
-                // --------------------------
                 stage('Clean Workspace') {
                     cleanWs()
                     echo "Workspace cleaned successfully!"
                 }
 
-                // --------------------------
                 stage('Checkout Source') {
                     checkout scm
                 }
 
-                // --------------------------
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
@@ -96,8 +94,7 @@ node {
                     }
                 }
 
-                // --------------------------
-                stage('Static Code Analysis & Publish') {
+                stage('Static Code Analysis & Publish (Debug)') {
                     if (isUnix()) {
                         sh """
                             rm -rf ${reportDir} ${htmlDir}
@@ -124,9 +121,10 @@ node {
                         """
 
                         // Detect HTML file dynamically
-                        def htmlFile = sh(script: "ls ${htmlDir}/*.html 2>/dev/null | head -n 1 | xargs -n1 basename || true",
-                                          returnStdout: true).trim()
-                        env.HTML_FILE = htmlFile
+                        env.HTML_FILE = sh(
+                            script: "ls ${htmlDir}/*.html 2>/dev/null | head -n 1 | xargs -n1 basename || true",
+                            returnStdout: true
+                        ).trim()
 
                     } else {
                         bat """
@@ -153,18 +151,18 @@ node {
 
                             echo === Final HTML Report Directory ===
                             dir /s "%WORKSPACE%\\${htmlDir}" || echo "No HTML report generated"
+
+                            REM Detect HTML file dynamically
+                            for %%f in (${htmlDir}\\*.html) do @echo %%~nxf
                         """
 
-                        // Detect HTML file dynamically on Windows
+                        // Use first found HTML file for publishing
                         env.HTML_FILE = bat(
                             script: "for %%f in (${htmlDir}\\*.html) do @echo %%~nxf & goto :done\n:done",
                             returnStdout: true
                         ).trim()
                     }
 
-                    // --------------------------
-                    // Publish Reports (HTML + JSON)
-                    // --------------------------
                     if (env.HTML_FILE) {
                         echo "✅ Detected HTML report file: ${env.HTML_FILE}"
 
@@ -196,7 +194,8 @@ node {
 
                 stage('Deploy to Org') {
                     deployToOrg()
-                } */
+                }
+                */
             }
         }
     } catch (err) {
