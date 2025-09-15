@@ -44,9 +44,9 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            def reportDir   = 'code-analyzer-report'
-            def htmlDir     = 'html-report'
-            def jsonReport  = 'results.json'
+            //def reportDir   = 'code-analyzer-report'
+            //def htmlDir     = 'html-report'
+            //def jsonReport  = 'results.json'
             def htmlReport  = 'index.html'
 
             withEnv([
