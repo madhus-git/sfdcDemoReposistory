@@ -108,18 +108,11 @@ node {
             sf code-analyzer run --workspace force-app \
                                  --output-file ${reportDir}/${jsonReport} || true
 
-            echo "=== Checking results.json ==="
-            ls -l ${reportDir}
-
-            echo "=== Generating HTML Report ==="
+            echo "=== Generating HTML Report (v5.x) ==="
             if [ -f ${reportDir}/${jsonReport} ]; then
-                # Try both report syntaxes (v5 vs older)
-                sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
-                                        --format html \
-                                        --output-dir ${htmlDir} || true
-
-                sf code-analyzer report:html --input-file ${reportDir}/${jsonReport} \
-                                             --output-dir ${htmlDir} || true
+                sf code-analyzer report:html \
+                    --input-file ${reportDir}/${jsonReport} \
+                    --output-dir ${htmlDir} || true
             fi
 
             echo "=== Final HTML Report Directory ==="
@@ -136,18 +129,11 @@ node {
             sf code-analyzer run --workspace force-app ^
                                  --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
 
-            echo === Checking results.json ===
-            dir "%WORKSPACE%\\${reportDir}"
-
-            echo === Generating HTML Report ===
+            echo === Generating HTML Report (v5.x) ===
             if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
-                REM Try both (v5 vs legacy)
-                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
-                                        --format html ^
-                                        --output-dir "%WORKSPACE%\\${htmlDir}" || echo fallback1
-
-                sf code-analyzer report:html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
-                                             --output-dir "%WORKSPACE%\\${htmlDir}" || echo fallback2
+                sf code-analyzer report:html ^
+                    --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
+                    --output-dir "%WORKSPACE%\\${htmlDir}" || echo "Failed to generate HTML"
             )
 
             echo === Final HTML Report Directory ===
@@ -155,6 +141,7 @@ node {
         """
     }
 }
+
 
 
                 // --------------------------
