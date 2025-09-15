@@ -101,24 +101,25 @@ node {
                 stage('Static Code Analysis') {
     if (isUnix()) {
         sh """
-            echo "=== Cleaning old reports ==="
             rm -rf ${reportDir} ${htmlDir}
             mkdir -p ${reportDir} ${htmlDir}
 
             echo "=== Running Analyzer ==="
             sf code-analyzer run --workspace force-app \
-                                 --output-file "${reportDir}/${jsonReport}" || true
+                                 --output-file ${reportDir}/${jsonReport} || true
 
             echo "=== Checking results.json ==="
             ls -l ${reportDir}
 
             echo "=== Generating HTML Report ==="
-            if [ -f "${reportDir}/${jsonReport}" ]; then
-                sf code-analyzer report --input-file "${reportDir}/${jsonReport}" \
+            if [ -f ${reportDir}/${jsonReport} ]; then
+                # Try both report syntaxes (v5 vs older)
+                sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
                                         --format html \
-                                        --output-dir "${htmlDir}" || true
-            else
-                echo "JSON report not found, skipping HTML generation"
+                                        --output-dir ${htmlDir} || true
+
+                sf code-analyzer report:html --input-file ${reportDir}/${jsonReport} \
+                                             --output-dir ${htmlDir} || true
             fi
 
             echo "=== Final HTML Report Directory ==="
@@ -126,7 +127,6 @@ node {
         """
     } else {
         bat """
-            echo === Cleaning old reports ===
             if exist "${reportDir}" rmdir /s /q "${reportDir}"
             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
             mkdir "${reportDir}"
@@ -141,18 +141,21 @@ node {
 
             echo === Generating HTML Report ===
             if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
+                REM Try both (v5 vs legacy)
                 sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
                                         --format html ^
-                                        --output-dir "%WORKSPACE%\\${htmlDir}" || exit 0
-            ) else (
-                echo JSON report not found, skipping HTML generation
+                                        --output-dir "%WORKSPACE%\\${htmlDir}" || echo fallback1
+
+                sf code-analyzer report:html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
+                                             --output-dir "%WORKSPACE%\\${htmlDir}" || echo fallback2
             )
 
             echo === Final HTML Report Directory ===
-            dir /s "%WORKSPACE%\\${htmlDir}"
+            dir /s "%WORKSPACE%\\${htmlDir}" || echo "No HTML report generated"
         """
     }
 }
+
 
                 // --------------------------
                 // Publish Reports (HTML + JSON)
