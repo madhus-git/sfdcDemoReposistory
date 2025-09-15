@@ -45,6 +45,7 @@ node {
         ]) {
 
             def reportDir   = 'code-analyzer-report'
+            def jsonReport  = 'results.json'
             def htmlReport  = 'StaticAnalysisReport.html'
 
             withEnv([
@@ -70,9 +71,6 @@ node {
                             if ! command -v sf >/dev/null 2>&1; then
                                 echo "Salesforce CLI not found, installing..."
                                 npm install --global @salesforce/cli
-                            else
-                                echo "Salesforce CLI is already installed."
-                                sf --version
                             fi
 
                             echo "Installing Code Analyzer plugin (v5.x)..."
@@ -84,9 +82,6 @@ node {
                             if %ERRORLEVEL% neq 0 (
                                 echo Salesforce CLI not found, installing...
                                 npm install --global @salesforce/cli
-                            ) else (
-                                echo Salesforce CLI is already installed.
-                                sf --version
                             )
 
                             echo Installing Code Analyzer plugin (v5.x)...
@@ -96,24 +91,36 @@ node {
                 }
 
                 // --------------------------
-                // Static Code Analysis (Code Analyzer v5.x)
+                // Static Code Analysis (Analyzer v5 + Styled Report)
                 // --------------------------
                 stage('Static Code Analysis') {
                     if (isUnix()) {
                         sh """
                             rm -rf ${reportDir}
                             mkdir -p ${reportDir}
+
+                            # Step 1: Run analysis to JSON
                             sf code-analyzer run --workspace force-app \
-                                                 --format html \
-                                                 --output-dir ${reportDir} || true
+                                                 --output-file ${reportDir}/${jsonReport} --json || true
+
+                            # Step 2: Generate styled HTML report (with CSS + JS)
+                            sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
+                                                    --format html \
+                                                    --output-dir ${reportDir}
                         """
                     } else {
                         bat """
                             if exist "${reportDir}" rmdir /s /q "${reportDir}"
                             mkdir "${reportDir}"
+
+                            REM Step 1: Run analysis to JSON
                             sf code-analyzer run --workspace force-app ^
-                                                 --format html ^
-                                                 --output-dir "%WORKSPACE%\\${reportDir}" || exit 0
+                                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --json || exit 0
+
+                            REM Step 2: Generate styled HTML report
+                            sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
+                                                    --format html ^
+                                                    --output-dir "%WORKSPACE%\\${reportDir}"
                         """
                     }
                 }
@@ -130,7 +137,6 @@ node {
                 // Publish Reports (HTML + assets)
                 // --------------------------
                 stage('Publish Reports') {
-                    // Archive full directory (HTML + CSS + JS + images)
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
                     publishHTML(target: [
