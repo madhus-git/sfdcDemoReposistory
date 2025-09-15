@@ -144,20 +144,22 @@ node {
                 // Publish Reports (HTML + Assets)
                 // --------------------------
                 stage('Publish Reports') {
+                    // Archive all files from the report folder (JSON + HTML + CSS/JS assets)
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
+                    // Publish the HTML report in Jenkins UI
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
-                        reportDir: reportDir,
-                        reportFiles: htmlReport,
+                        reportDir: reportDir,                  // Folder containing HTML + assets
+                        reportFiles: htmlReport,               // Main HTML report file
                         reportName: 'Salesforce Code Analyzer Dashboard',
                         reportTitles: 'Salesforce Static Analysis',
                         escapeUnderscores: false
                     ])
 
-                    echo "Salesforce Code Analyzer Dashboard: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
+                    echo "Static Analysis report available in Jenkins UI: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
                 }
 
                 stage('Authenticate Org') {
