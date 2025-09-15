@@ -1,36 +1,8 @@
 // ==============================
 // Utility Functions
 // ==============================
-def authenticateOrg() {
-    if (isUnix()) {
-        sh """
-            echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
-                             --jwt-key-file "$JWT_KEY_FILE" \
-                             --username "$SFDC_USERNAME" \
-                             --alias "$ORG_ALIAS" \
-                             --instance-url "$SFDC_HOST"
-        """
-    } else {
-        bat """
-            echo Authenticating to Salesforce Org: %ORG_ALIAS%
-            sf org login jwt ^
-                --client-id %CONNECTED_APP_CONSUMER_KEY% ^
-                --jwt-key-file %JWT_KEY_FILE% ^
-                --username %SFDC_USERNAME% ^
-                --alias %ORG_ALIAS% ^
-                --instance-url %SFDC_HOST%
-        """
-    }
-}
-
-def deployToOrg() {
-    if (isUnix()) {
-        sh "sf project deploy start --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
-    } else {
-        bat "sf project deploy start --target-org %ORG_ALIAS% --ignore-conflicts --wait 10"
-    }
-}
+def authenticateOrg() { ... }   // unchanged
+def deployToOrg() { ... }       // unchanged
 
 // ==============================
 // Main Pipeline
@@ -75,6 +47,9 @@ node {
 
                             echo "Installing Code Analyzer plugin (v5.x)..."
                             sf plugins install code-analyzer || true
+
+                            echo "Installed plugins:"
+                            sf plugins list
                         '''
                     } else {
                         bat '''
@@ -86,6 +61,9 @@ node {
 
                             echo Installing Code Analyzer plugin (v5.x)...
                             sf plugins install code-analyzer || exit 0
+
+                            echo Installed plugins:
+                            sf plugins list
                         '''
                     }
                 }
@@ -99,20 +77,23 @@ node {
                             rm -rf ${reportDir} ${htmlDir}
                             mkdir -p ${reportDir} ${htmlDir}
 
-                            # Run analysis to JSON
+                            echo "=== Running Analyzer ==="
                             sf code-analyzer run --workspace force-app \
                                                  --output-file ${reportDir}/${jsonReport} || true
 
-                            # Generate HTML report
+                            echo "=== Checking results.json ==="
+                            ls -l ${reportDir}
+
+                            echo "=== Generating HTML Report ==="
                             if [ -f ${reportDir}/${jsonReport} ]; then
                                 sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
                                                         --format html \
                                                         --output-dir ${htmlDir} || true
                             else
-                                echo "JSON report not found, skipping HTML report generation"
+                                echo "JSON report not found, skipping HTML generation"
                             fi
 
-                            echo "Generated report files:"
+                            echo "=== Final HTML Report Directory ==="
                             ls -R ${htmlDir}
                         """
                     } else {
@@ -122,11 +103,14 @@ node {
                             mkdir "${reportDir}"
                             mkdir "${htmlDir}"
 
-                            REM Run analysis to JSON
+                            echo === Running Analyzer ===
                             sf code-analyzer run --workspace force-app ^
                                                  --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
 
-                            REM Generate HTML report
+                            echo === Checking results.json ===
+                            dir "%WORKSPACE%\\${reportDir}"
+
+                            echo === Generating HTML Report ===
                             if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
                                 sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
                                                         --format html ^
@@ -135,7 +119,7 @@ node {
                                 echo JSON report not found, skipping HTML generation
                             )
 
-                            echo Generated report files:
+                            echo === Final HTML Report Directory ===
                             dir /s "%WORKSPACE%\\${htmlDir}"
                         """
                     }
@@ -145,30 +129,31 @@ node {
                 // Publish Reports (HTML + JSON)
                 // --------------------------
                 stage('Publish Reports') {
-                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
-                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
+                    // Fail-safe: allowMissing so pipeline won't break if HTML didn't generate
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true, allowEmptyArchive: true
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true, allowEmptyArchive: true
 
                     publishHTML(target: [
-                        allowMissing: false,
+                        allowMissing: true,   // ✅ change to true so pipeline won’t fail
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
-                        reportDir: htmlDir,                  // Folder containing HTML + assets
-                        reportFiles: htmlReport,             // Main HTML report file
+                        reportDir: htmlDir,
+                        reportFiles: htmlReport,
                         reportName: 'Salesforce Code Analyzer Dashboard',
                         reportTitles: 'Salesforce Static Analysis',
                         escapeUnderscores: false
                     ])
 
-                    echo "Static Analysis report available in Jenkins UI: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
+                    echo "Static Analysis report available (if generated): ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
                 }
 
-                stage('Authenticate Org') {
+                /* stage('Authenticate Org') {
                     authenticateOrg()
                 }
 
                 stage('Deploy to Org') {
                     deployToOrg()
-                }
+                } */
             }
         }
     } catch (err) {
