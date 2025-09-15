@@ -99,80 +99,88 @@ node {
                 // Static Code Analysis (Analyzer v5: run + report)
                 // --------------------------
                 stage('Static Code Analysis') {
-                    if (isUnix()) {
-                        sh """
-                            rm -rf ${reportDir} ${htmlDir}
-                            mkdir -p ${reportDir} ${htmlDir}
+    if (isUnix()) {
+        sh """
+            echo "=== Cleaning old reports ==="
+            rm -rf ${reportDir} ${htmlDir}
+            mkdir -p ${reportDir} ${htmlDir}
 
-                            echo "=== Running Analyzer ==="
-                            sf code-analyzer run --workspace force-app \
-                                                 --output-file ${reportDir}/${jsonReport} || true
+            echo "=== Running Analyzer ==="
+            sf code-analyzer run --workspace force-app \
+                                 --output-file "${reportDir}/${jsonReport}" || true
 
-                            echo "=== Checking results.json ==="
-                            ls -l ${reportDir}
+            echo "=== Checking results.json ==="
+            ls -l ${reportDir}
 
-                            echo "=== Generating HTML Report ==="
-                            if [ -f ${reportDir}/${jsonReport} ]; then
-                                sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
-                                                        --format html \
-                                                        --output-dir ${htmlDir} || true
-                            else
-                                echo "JSON report not found, skipping HTML generation"
-                            fi
+            echo "=== Generating HTML Report ==="
+            if [ -f "${reportDir}/${jsonReport}" ]; then
+                sf code-analyzer report --input-file "${reportDir}/${jsonReport}" \
+                                        --format html \
+                                        --output-dir "${htmlDir}" || true
+            else
+                echo "JSON report not found, skipping HTML generation"
+            fi
 
-                            echo "=== Final HTML Report Directory ==="
-                            ls -R ${htmlDir}
-                        """
-                    } else {
-                        bat """
-                            if exist "${reportDir}" rmdir /s /q "${reportDir}"
-                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-                            mkdir "${reportDir}"
-                            mkdir "${htmlDir}"
+            echo "=== Final HTML Report Directory ==="
+            ls -R ${htmlDir} || true
+        """
+    } else {
+        bat """
+            echo === Cleaning old reports ===
+            if exist "${reportDir}" rmdir /s /q "${reportDir}"
+            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+            mkdir "${reportDir}"
+            mkdir "${htmlDir}"
 
-                            echo === Running Analyzer ===
-                            sf code-analyzer run --workspace force-app ^
-                                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
+            echo === Running Analyzer ===
+            sf code-analyzer run --workspace force-app ^
+                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
 
-                            echo === Checking results.json ===
-                            dir "%WORKSPACE%\\${reportDir}"
+            echo === Checking results.json ===
+            dir "%WORKSPACE%\\${reportDir}"
 
-                            echo === Generating HTML Report ===
-                            if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
-                                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
-                                                        --format html ^
-                                                        --output-dir "%WORKSPACE%\\${htmlDir}" || exit 0
-                            ) else (
-                                echo JSON report not found, skipping HTML generation
-                            )
+            echo === Generating HTML Report ===
+            if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
+                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
+                                        --format html ^
+                                        --output-dir "%WORKSPACE%\\${htmlDir}" || exit 0
+            ) else (
+                echo JSON report not found, skipping HTML generation
+            )
 
-                            echo === Final HTML Report Directory ===
-                            dir /s "%WORKSPACE%\\${htmlDir}"
-                        """
-                    }
-                }
+            echo === Final HTML Report Directory ===
+            dir /s "%WORKSPACE%\\${htmlDir}"
+        """
+    }
+}
 
                 // --------------------------
                 // Publish Reports (HTML + JSON)
                 // --------------------------
                 stage('Publish Reports') {
-                    // Fail-safe: allowMissing so pipeline won't break if HTML didn't generate
-                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true, allowEmptyArchive: true
-                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true, allowEmptyArchive: true
+    // Archive artifacts (both JSON + HTML)
+    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true, allowEmptyArchive: true
+    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true, allowEmptyArchive: true
 
-                    publishHTML(target: [
-                        allowMissing: true,   // ✅ change to true so pipeline won’t fail
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: htmlDir,
-                        reportFiles: htmlReport,
-                        reportName: 'Salesforce Code Analyzer Dashboard',
-                        reportTitles: 'Salesforce Static Analysis',
-                        escapeUnderscores: false
-                    ])
+    // Publish the HTML dashboard in Jenkins
+    publishHTML(target: [
+        allowMissing: true,   // don't fail if HTML isn't created
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: htmlDir,
+        reportFiles: htmlReport,
+        reportName: 'Salesforce Code Analyzer Dashboard',
+        reportTitles: 'Salesforce Static Analysis',
+        escapeUnderscores: false
+    ])
 
-                    echo "Static Analysis report available (if generated): ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
-                }
+    // Print direct links in Jenkins console
+    def analyzerUrl = "${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
+    def indexUrl    = "${analyzerUrl}${htmlReport}"
+
+    echo "Static Analysis Dashboard: ${analyzerUrl}"
+    echo "Direct Report Link: ${indexUrl}"
+}
 
                 /* stage('Authenticate Org') {
                     authenticateOrg()
