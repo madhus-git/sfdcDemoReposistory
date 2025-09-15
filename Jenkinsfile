@@ -5,10 +5,10 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \\
-                             --jwt-key-file "$JWT_KEY_FILE" \\
-                             --username "$SFDC_USERNAME" \\
-                             --alias "$ORG_ALIAS" \\
+            sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \
+                             --jwt-key-file "$JWT_KEY_FILE" \
+                             --username "$SFDC_USERNAME" \
+                             --alias "$ORG_ALIAS" \
                              --instance-url "$SFDC_HOST"
         """
     } else {
@@ -45,7 +45,7 @@ node {
         ]) {
 
             // Workspace-relative path for artifacts
-            def reportDir   = 'pmd-report-html'
+            def reportDir   = 'code-analyzer-report'
             def htmlReport  = reportDir + (isUnix() ? "/StaticAnalysisReport.html" : "\\StaticAnalysisReport.html")
 
             withEnv([
@@ -53,23 +53,17 @@ node {
                 "ORG_ALIAS=projectdemosfdc"
             ]) {
 
-                // --------------------------
-                // Clean Workspace
-                // --------------------------
                 stage('Clean Workspace') {
                     cleanWs()
                     echo "Workspace cleaned successfully!"
                 }
 
-                // --------------------------
-                // Checkout Source
-                // --------------------------
                 stage('Checkout Source') {
                     checkout scm
                 }
 
                 // --------------------------
-                // Install Salesforce CLI
+                // Install Salesforce CLI + Code Analyzer (v5.x)
                 // --------------------------
                 stage('Install prerequisite') {
                     if (isUnix()) {
@@ -81,6 +75,9 @@ node {
                                 echo "Salesforce CLI is already installed."
                                 sf --version
                             fi
+
+                            echo "Installing Code Analyzer plugin (v5.x)..."
+                            sf plugins install code-analyzer || true
                         '''
                     } else {
                         bat '''
@@ -92,38 +89,37 @@ node {
                                 echo Salesforce CLI is already installed.
                                 sf --version
                             )
+
+                            echo Installing Code Analyzer plugin (v5.x)...
+                            sf plugins install code-analyzer || exit 0
                         '''
                     }
                 }
 
                 // --------------------------
-                // Static Code Analysis
+                // Static Code Analysis (Code Analyzer v5.x)
                 // --------------------------
                 stage('Static Code Analysis') {
                     if (isUnix()) {
                         sh """
                             mkdir -p ${reportDir}
 
-                            sf scanner:run --target "force-app/main/default/classes" \\
-                                           --engine pmd \\
-                                           --format html \\
-                                           --outfile "${htmlReport}" || true
+                            # Run Code Analyzer v5.x:
+                            # - workspace: force-app (scan entire package)
+                            # - output-file: produce an HTML report (extension determines format)
+                            # - keep exit tolerant so pipeline doesn't fail on violations (change as needed)
+                            sf code-analyzer run --workspace force-app --output-file "${htmlReport}" || true
                         """
                     } else {
                         bat """
                             if not exist "${reportDir}" mkdir "${reportDir}"
 
-                            sf scanner:run --target "force-app/main/default/classes" ^
-                                           --engine pmd ^
-                                           --format html ^
-                                           --outfile "%WORKSPACE%\\${htmlReport}" || exit 0
+                            rem Run Code Analyzer v5.x and write HTML report
+                            sf code-analyzer run --workspace force-app --output-file "%WORKSPACE%\\${reportDir}\\StaticAnalysisReport.html" || exit 0
                         """
                     }
                 }
 
-                // --------------------------
-                // Verify Reports
-                // --------------------------
                 stage('Verify Reports') {
                     if (isUnix()) {
                         sh "ls -l ${reportDir}"
@@ -132,39 +128,27 @@ node {
                     }
                 }
 
-                // --------------------------
-                // Publish Reports (HTML only)
-                // --------------------------
                 stage('Publish Reports') {
-                    // Archive reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
-                    // Publish HTML report (clickable in Jenkins sidebar)
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: reportDir,
                         reportFiles: 'StaticAnalysisReport.html',
-                        reportName: 'Salesforce PMD Dashboard',
+                        reportName: 'Salesforce Code Analyzer Dashboard',
                         reportTitles: 'Salesforce Static Analysis',
                         escapeUnderscores: false
                     ])
 
-                    // Echo clickable link in console
-                    echo "Salesforce PMD Dashboard: ${env.BUILD_URL}Salesforce_20PMD_20Dashboard/"
+                    echo "Salesforce Code Analyzer Dashboard: ${env.BUILD_URL}Code_20Analyzer_20Dashboard/"
                 }
 
-                // --------------------------
-                // Authenticate Dev Org
-                // --------------------------
                 stage('Authenticate Org') {
                     authenticateOrg()
                 }
 
-                // --------------------------
-                // Deploy to Dev Org
-                // --------------------------
                 stage('Deploy to Org') {
                     deployToOrg()
                 }
