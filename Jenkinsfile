@@ -13,8 +13,7 @@ def authenticateOrg() {
         """
     } else {
         bat """
-            echo Authenticating to Salesforce Org: %ORG_ALIAS%...
-
+            echo Authenticating to Salesforce Org: %ORG_ALIAS%
             sf org login jwt ^
                 --client-id %CONNECTED_APP_CONSUMER_KEY% ^
                 --jwt-key-file %JWT_KEY_FILE% ^
@@ -65,7 +64,7 @@ node {
                 // --------------------------
                 // Install Salesforce CLI + Code Analyzer (v5.x)
                 // --------------------------
-                stage('Install prerequisite') {
+                stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -91,7 +90,7 @@ node {
                 }
 
                 // --------------------------
-                // Static Code Analysis (Analyzer v5 + Styled Report)
+                // Static Code Analysis (Analyzer v5 + HTML Report)
                 // --------------------------
                 stage('Static Code Analysis') {
                     if (isUnix()) {
@@ -99,28 +98,36 @@ node {
                             rm -rf ${reportDir}
                             mkdir -p ${reportDir}
 
-                            # Step 1: Run analysis to JSON
+                            # Run analysis to JSON
                             sf code-analyzer run --workspace force-app \
-                                                 --output-file ${reportDir}/${jsonReport} --json || true
+                                                 --output-file ${reportDir}/${jsonReport} || true
 
-                            # Step 2: Generate styled HTML report (with CSS + JS)
-                            sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
-                                                    --format html \
-                                                    --output-dir ${reportDir}
+                            # Generate styled HTML report
+                            if [ -f ${reportDir}/${jsonReport} ]; then
+                                sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
+                                                        --format html \
+                                                        --output-dir ${reportDir} || true
+                            else
+                                echo "JSON report not found, skipping HTML report generation"
+                            fi
                         """
                     } else {
                         bat """
                             if exist "${reportDir}" rmdir /s /q "${reportDir}"
                             mkdir "${reportDir}"
 
-                            REM Step 1: Run analysis to JSON
+                            REM Run analysis to JSON
                             sf code-analyzer run --workspace force-app ^
-                                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --json || exit 0
+                                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
 
-                            REM Step 2: Generate styled HTML report
-                            sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
-                                                    --format html ^
-                                                    --output-dir "%WORKSPACE%\\${reportDir}"
+                            REM Generate styled HTML report
+                            if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
+                                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
+                                                        --format html ^
+                                                        --output-dir "%WORKSPACE%\\${reportDir}" || exit 0
+                            ) else (
+                                echo JSON report not found, skipping HTML report generation
+                            )
                         """
                     }
                 }
@@ -134,7 +141,7 @@ node {
                 }
 
                 // --------------------------
-                // Publish Reports (HTML + assets)
+                // Publish Reports (HTML + Assets)
                 // --------------------------
                 stage('Publish Reports') {
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
