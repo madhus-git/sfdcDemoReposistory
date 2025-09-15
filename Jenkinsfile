@@ -96,9 +96,9 @@ node {
                 }
 
                 // --------------------------
-                // Static Code Analysis (Analyzer v5: run + report)
-                // --------------------------
-                stage('Static Code Analysis') {
+// Static Code Analysis (Analyzer v5.x: run + report)
+// --------------------------
+stage('Static Code Analysis') {
     if (isUnix()) {
         sh """
             rm -rf ${reportDir} ${htmlDir}
@@ -112,11 +112,12 @@ node {
             if [ -f ${reportDir}/${jsonReport} ]; then
                 sf code-analyzer report:html \
                     --input-file ${reportDir}/${jsonReport} \
-                    --output-dir ${htmlDir} || true
+                    --output-dir ${htmlDir} \
+                    --exit-code 0 || true
             fi
 
-            echo "=== Final HTML Report Directory ==="
-            ls -R ${htmlDir} || true
+            echo "=== Debug: list reports ==="
+            ls -R ${reportDir} ${htmlDir} || true
         """
     } else {
         bat """
@@ -133,11 +134,13 @@ node {
             if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
                 sf code-analyzer report:html ^
                     --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
-                    --output-dir "%WORKSPACE%\\${htmlDir}" || echo "Failed to generate HTML"
+                    --output-dir "%WORKSPACE%\\${htmlDir}" ^
+                    --exit-code 0 || echo "Failed to generate HTML"
             )
 
-            echo === Final HTML Report Directory ===
-            dir /s "%WORKSPACE%\\${htmlDir}" || echo "No HTML report generated"
+            echo === Debug: list reports ===
+            dir /s "%WORKSPACE%\\${reportDir}"
+            dir /s "%WORKSPACE%\\${htmlDir}"
         """
     }
 }
