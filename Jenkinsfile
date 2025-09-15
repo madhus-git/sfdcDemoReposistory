@@ -74,7 +74,7 @@ node {
                             fi
 
                             echo "Installing Code Analyzer plugin (v5.x)..."
-                            sf plugins install @salesforce/code-analyzer || true
+                            sf plugins install code-analyzer || true
                         '''
                     } else {
                         bat '''
@@ -85,13 +85,13 @@ node {
                             )
 
                             echo Installing Code Analyzer plugin (v5.x)...
-                            sf plugins install @salesforce/code-analyzer || exit 0
+                            sf plugins install code-analyzer || exit 0
                         '''
                     }
                 }
 
                 // --------------------------
-                // Static Code Analysis (Analyzer v5 + HTML Report)
+                // Static Code Analysis (Analyzer v5: run + report)
                 // --------------------------
                 stage('Static Code Analysis') {
                     if (isUnix()) {
@@ -103,7 +103,7 @@ node {
                             sf code-analyzer run --workspace force-app \
                                                  --output-file ${reportDir}/${jsonReport} || true
 
-                            # Generate styled HTML report
+                            # Generate HTML report
                             if [ -f ${reportDir}/${jsonReport} ]; then
                                 sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
                                                         --format html \
@@ -126,7 +126,7 @@ node {
                             sf code-analyzer run --workspace force-app ^
                                                  --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
 
-                            REM Generate styled HTML report
+                            REM Generate HTML report
                             if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
                                 sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
                                                         --format html ^
@@ -142,7 +142,7 @@ node {
                 }
 
                 // --------------------------
-                // Publish Reports (HTML + Assets)
+                // Publish Reports (HTML + JSON)
                 // --------------------------
                 stage('Publish Reports') {
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
