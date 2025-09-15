@@ -1,8 +1,36 @@
 // ==============================
 // Utility Functions
 // ==============================
-def authenticateOrg() { if (isUnix()) { sh """ echo "Authenticating to Salesforce Org: $ORG_ALIAS..." sf org login jwt --client-id "$CONNECTED_APP_CONSUMER_KEY" \ --jwt-key-file "$JWT_KEY_FILE" \ --username "$SFDC_USERNAME" \ --alias "$ORG_ALIAS" \ --instance-url "$SFDC_HOST" """ } else { bat """ echo Authenticating to Salesforce Org: %ORG_ALIAS% sf org login jwt ^ --client-id %CONNECTED_APP_CONSUMER_KEY% ^ --jwt-key-file %JWT_KEY_FILE% ^ --username %SFDC_USERNAME% ^ --alias %ORG_ALIAS% ^ --instance-url %SFDC_HOST% """ } }
-def deployToOrg() { if (isUnix()) { sh "sf project deploy start --target-org $ORG_ALIAS --ignore-conflicts --wait 10" } else { bat "sf project deploy start --target-org %ORG_ALIAS% --ignore-conflicts --wait 10" } }
+def authenticateOrg() {
+    if (isUnix()) {
+        sh """
+            echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
+            sf org login jwt \
+                --client-id "$CONNECTED_APP_CONSUMER_KEY" \
+                --jwt-key-file "$JWT_KEY_FILE" \
+                --username "$SFDC_USERNAME" \
+                --alias "$ORG_ALIAS" \
+                --instance-url "$SFDC_HOST"
+        """
+    } else {
+        bat """
+            echo Authenticating to Salesforce Org: %ORG_ALIAS%
+            sf org login jwt ^
+                --client-id %CONNECTED_APP_CONSUMER_KEY% ^
+                --jwt-key-file %JWT_KEY_FILE% ^
+                --username %SFDC_USERNAME% ^
+                --alias %ORG_ALIAS% ^
+                --instance-url %SFDC_HOST%
+        """
+    }
+}
+def deployToOrg() {
+    if (isUnix()) {
+        sh "sf project deploy start --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
+    } else {
+        bat "sf project deploy start --target-org %ORG_ALIAS% --ignore-conflicts --wait 10"
+    }
+}
 // ==============================
 // Main Pipeline
 // ==============================
