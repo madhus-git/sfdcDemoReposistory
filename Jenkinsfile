@@ -43,10 +43,10 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            def reportDir   = 'code-analyzer-report'   // SARIF output
-            def htmlDir     = 'html-report'            // HTML + assets output
-            def sarifReport = 'results.sarif'
-            def mainHtml    = 'index.html'
+            def reportDir   = 'code-analyzer-report'
+            def htmlDir     = 'html-report'
+            def jsonReport  = 'results.json'
+            def htmlReport  = 'index.html'
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
@@ -63,7 +63,7 @@ node {
                 }
 
                 // --------------------------
-                // Install Salesforce CLI + Code Analyzer (v5.x)
+                // Install Salesforce CLI + Code Analyzer v5.x
                 // --------------------------
                 stage('Install Prerequisites') {
                     if (isUnix()) {
@@ -74,7 +74,7 @@ node {
                             fi
 
                             echo "Installing Code Analyzer plugin (v5.x)..."
-                            sf plugins install code-analyzer || true
+                            sf plugins install @salesforce/code-analyzer || true
                         '''
                     } else {
                         bat '''
@@ -85,7 +85,7 @@ node {
                             )
 
                             echo Installing Code Analyzer plugin (v5.x)...
-                            sf plugins install code-analyzer || exit 0
+                            sf plugins install @salesforce/code-analyzer || exit 0
                         '''
                     }
                 }
@@ -99,18 +99,17 @@ node {
                             rm -rf ${reportDir} ${htmlDir}
                             mkdir -p ${reportDir} ${htmlDir}
 
-                            # Run analyzer to SARIF
+                            # Run analysis to JSON
                             sf code-analyzer run --workspace force-app \
-                                                 --format sarif \
-                                                 --outfile ${reportDir}/${sarifReport} || true
+                                                 --output-file ${reportDir}/${jsonReport} || true
 
                             # Generate styled HTML report
-                            if [ -f ${reportDir}/${sarifReport} ]; then
-                                sf code-analyzer report --input-file ${reportDir}/${sarifReport} \
+                            if [ -f ${reportDir}/${jsonReport} ]; then
+                                sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
                                                         --format html \
                                                         --output-dir ${htmlDir} || true
                             else
-                                echo "SARIF report not found, skipping HTML report generation"
+                                echo "JSON report not found, skipping HTML report generation"
                             fi
 
                             echo "Generated report files:"
@@ -123,18 +122,17 @@ node {
                             mkdir "${reportDir}"
                             mkdir "${htmlDir}"
 
-                            REM Run analyzer to SARIF
+                            REM Run analysis to JSON
                             sf code-analyzer run --workspace force-app ^
-                                                 --format sarif ^
-                                                 --outfile "%WORKSPACE%\\${reportDir}\\${sarifReport}" || exit 0
+                                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
 
                             REM Generate styled HTML report
-                            if exist "%WORKSPACE%\\${reportDir}\\${sarifReport}" (
-                                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${sarifReport}" ^
+                            if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
+                                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
                                                         --format html ^
                                                         --output-dir "%WORKSPACE%\\${htmlDir}" || exit 0
                             ) else (
-                                echo SARIF report not found, skipping HTML report generation
+                                echo JSON report not found, skipping HTML generation
                             )
 
                             echo Generated report files:
@@ -147,24 +145,15 @@ node {
                 // Publish Reports (HTML + Assets)
                 // --------------------------
                 stage('Publish Reports') {
-                    // Verify folder contents before publishing
-                    if (isUnix()) {
-                        sh "ls -R ${htmlDir}"
-                    } else {
-                        bat "dir /s ${htmlDir}"
-                    }
-
-                    // Archive SARIF + HTML reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-                    // Publish HTML report in Jenkins
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
-                        reportDir: htmlDir,       // Folder with index.html + assets
-                        reportFiles: mainHtml,    // Main entry HTML file
+                        reportDir: htmlDir,                  // Folder containing HTML + assets
+                        reportFiles: htmlReport,             // Main HTML report file
                         reportName: 'Salesforce Code Analyzer Dashboard',
                         reportTitles: 'Salesforce Static Analysis',
                         escapeUnderscores: false
@@ -173,9 +162,6 @@ node {
                     echo "Static Analysis report available in Jenkins UI: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
                 }
 
-                // --------------------------
-                // Deploy
-                // --------------------------
                 stage('Authenticate Org') {
                     authenticateOrg()
                 }
