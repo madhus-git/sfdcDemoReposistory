@@ -1,0 +1,178 @@
+node {
+    try {
+        // ------------------------
+        // Global Credentials
+        // ------------------------
+        withCredentials([
+            string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
+            string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
+            file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
+        ]) {
+            // ------------------------
+            // Global Environment Variables
+            // ------------------------
+            env.SFDC_HOST = 'https://login.salesforce.com'
+
+            // Org aliases
+            env.DEV_ORG_ALIAS  = 'projectdemosfdc_dev'
+            env.SIT_ORG_ALIAS  = 'projectdemosfdc_sit'
+            env.UAT_ORG_ALIAS  = 'projectdemosfdc_uat'
+            env.PROD_ORG_ALIAS = 'projectdemosfdc_prod'
+
+            // Slack channel and webhook (replace with your channel)
+            env.SLACK_CHANNEL = '#devops-alerts'
+            env.SLACK_CREDENTIALS_ID = 'slack-webhook-url'
+
+            // ------------------------
+            // Utility Functions
+            // ------------------------
+            def slackNotify(message, color = 'good') {
+                slackSend(channel: env.SLACK_CHANNEL, 
+                          color: color, 
+                          message: message, 
+                          webhookUrl: credentials(env.SLACK_CREDENTIALS_ID))
+            }
+
+            def authenticateOrg(orgAlias) {
+                if (isUnix()) {
+                    sh """
+                        echo "Authenticating to Salesforce Org: ${orgAlias}..."
+                        sf org login jwt --client-id $CONNECTED_APP_CONSUMER_KEY \
+                                        --jwt-key-file $JWT_KEY_FILE \
+                                        --username $SFDC_USERNAME \
+                                        --alias ${orgAlias} \
+                                        --instance-url $SFDC_HOST
+                    """
+                } else {
+                    bat """
+                        echo Authenticating to Salesforce Org: ${orgAlias}...
+                        sf org login jwt --client-id %CONNECTED_APP_CONSUMER_KEY% \
+                                        --jwt-key-file %JWT_KEY_FILE% \
+                                        --username %SFDC_USERNAME% \
+                                        --alias ${orgAlias} \
+                                        --instance-url %SFDC_HOST%
+                    """
+                }
+            }
+
+            def deployToOrg(orgAlias) {
+                if (isUnix()) {
+                    sh "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+                } else {
+                    bat "sf project deploy start --target-org ${orgAlias} --ignore-conflicts --wait 10"
+                }
+            }
+
+            def runTests(orgAlias) {
+                if (isUnix()) {
+                    sh "sf apex test run --target-org ${orgAlias} --result-format human --wait 10"
+                } else {
+                    bat "sf apex test run --target-org ${orgAlias} --result-format human --wait 10"
+                }
+            }
+
+            def approvalGate(message) {
+                input message: message, ok: 'Approve'
+            }
+
+            // ------------------------
+            // Pipeline Stages
+            // ------------------------
+            stage('Pipeline Start') {
+                echo "🚀 Salesforce CI/CD pipeline started!"
+                slackNotify("🚀 Salesforce CI/CD pipeline started for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
+            }
+
+            stage('Checkout Source') {
+                checkout scm
+            }
+
+            stage('Install Salesforce CLI') {
+                if (isUnix()) {
+                    sh '''
+                        if ! command -v sf >/dev/null 2>&1; then
+                            echo "Salesforce CLI not found, installing..."
+                            npm install --global @salesforce/cli
+                        else
+                            echo "Salesforce CLI is already installed."
+                            sf --version
+                        fi
+                    '''
+                } else {
+                    bat '''
+                        where sf >nul 2>nul
+                        if %ERRORLEVEL% neq 0 (
+                            echo Salesforce CLI not found, installing...
+                            npm install --global @salesforce/cli
+                        ) else (
+                            echo Salesforce CLI is already installed.
+                            sf --version
+                        )
+                    '''
+                }
+            }
+
+            stage('Authenticate Dev Org') { 
+                authenticateOrg(env.DEV_ORG_ALIAS)
+                slackNotify("✅ Authenticated Dev Org: ${env.DEV_ORG_ALIAS}")
+            }
+            stage('Deploy to Dev Org') { 
+                deployToOrg(env.DEV_ORG_ALIAS)
+                slackNotify("✅ Deployment to Dev Org completed")
+            }
+            stage('Run Tests in Dev Org') { 
+                runTests(env.DEV_ORG_ALIAS)
+                slackNotify("✅ Tests passed in Dev Org")
+            }
+
+            stage('Authenticate SIT Org') { 
+                authenticateOrg(env.SIT_ORG_ALIAS)
+                slackNotify("✅ Authenticated SIT Org: ${env.SIT_ORG_ALIAS}")
+            }
+            stage('Deploy to SIT Org') { 
+                deployToOrg(env.SIT_ORG_ALIAS)
+                slackNotify("✅ Deployment to SIT Org completed")
+            }
+            stage('Run Tests in SIT Org') { 
+                runTests(env.SIT_ORG_ALIAS)
+                slackNotify("✅ Tests passed in SIT Org")
+            }
+
+            stage('Approval Before UAT') { approvalGate("Approve deployment to UAT?") }
+            stage('Authenticate UAT Org') { 
+                authenticateOrg(env.UAT_ORG_ALIAS)
+                slackNotify("✅ Authenticated UAT Org: ${env.UAT_ORG_ALIAS}")
+            }
+            stage('Deploy to UAT Org') { 
+                deployToOrg(env.UAT_ORG_ALIAS)
+                slackNotify("✅ Deployment to UAT Org completed")
+            }
+            stage('Run Tests in UAT Org') { 
+                runTests(env.UAT_ORG_ALIAS)
+                slackNotify("✅ Tests passed in UAT Org")
+            }
+
+            stage('Approval Before PROD') { approvalGate("Approve deployment to PROD?") }
+            stage('Authenticate PROD Org') { 
+                authenticateOrg(env.PROD_ORG_ALIAS)
+                slackNotify("✅ Authenticated PROD Org: ${env.PROD_ORG_ALIAS}")
+            }
+            stage('Deploy to PROD Org') { 
+                deployToOrg(env.PROD_ORG_ALIAS)
+                slackNotify("✅ Deployment to PROD Org completed")
+            }
+
+            stage('Pipeline Complete') {
+                echo "🎉 Salesforce CI/CD pipeline completed successfully!"
+                slackNotify("🎉 Salesforce CI/CD pipeline completed successfully for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})")
+            }
+
+        } // end of withCredentials
+
+    } catch (err) {
+        echo "❌ Pipeline failed: ${err}"
+        slackNotify("❌ Salesforce CI/CD pipeline FAILED for project ${env.JOB_NAME} (#${env.BUILD_NUMBER})", 'danger')
+        currentBuild.result = 'FAILURE'
+        throw err
+    }
+}
