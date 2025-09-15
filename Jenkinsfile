@@ -101,15 +101,19 @@ node {
                 stage('Static Code Analysis') {
                     if (isUnix()) {
                         sh """
+                            rm -rf ${reportDir}
                             mkdir -p ${reportDir}
                             sf code-analyzer run --workspace force-app \
-                                                 --output-file "${reportDir}/${htmlReport}" || true
+                                                 --format html \
+                                                 --output-dir ${reportDir} || true
                         """
                     } else {
                         bat """
-                            if not exist "${reportDir}" mkdir "${reportDir}"
+                            if exist "${reportDir}" rmdir /s /q "${reportDir}"
+                            mkdir "${reportDir}"
                             sf code-analyzer run --workspace force-app ^
-                                                 --output-file "%WORKSPACE%\\${reportDir}\\${htmlReport}" || exit 0
+                                                 --format html ^
+                                                 --output-dir "%WORKSPACE%\\${reportDir}" || exit 0
                         """
                     }
                 }
@@ -126,7 +130,7 @@ node {
                 // Publish Reports (HTML + assets)
                 // --------------------------
                 stage('Publish Reports') {
-                    // Archive full directory (HTML + CSS + JS)
+                    // Archive full directory (HTML + CSS + JS + images)
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
 
                     publishHTML(target: [
