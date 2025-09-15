@@ -43,9 +43,9 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            def reportDir   = 'code-analyzer-report'   // JSON output
+            def reportDir   = 'code-analyzer-report'   // SARIF output
             def htmlDir     = 'html-report'            // HTML + assets output
-            def jsonReport  = 'results.json'
+            def sarifReport = 'results.sarif'
             def mainHtml    = 'index.html'
 
             withEnv([
@@ -99,17 +99,18 @@ node {
                             rm -rf ${reportDir} ${htmlDir}
                             mkdir -p ${reportDir} ${htmlDir}
 
-                            # Run analysis to JSON
+                            # Run analyzer to SARIF
                             sf code-analyzer run --workspace force-app \
-                                                 --output-file ${reportDir}/${jsonReport} || true
+                                                 --format sarif \
+                                                 --outfile ${reportDir}/${sarifReport} || true
 
                             # Generate styled HTML report
-                            if [ -f ${reportDir}/${jsonReport} ]; then
-                                sf code-analyzer report --input-file ${reportDir}/${jsonReport} \
+                            if [ -f ${reportDir}/${sarifReport} ]; then
+                                sf code-analyzer report --input-file ${reportDir}/${sarifReport} \
                                                         --format html \
                                                         --output-dir ${htmlDir} || true
                             else
-                                echo "JSON report not found, skipping HTML report generation"
+                                echo "SARIF report not found, skipping HTML report generation"
                             fi
 
                             echo "Generated report files:"
@@ -122,17 +123,18 @@ node {
                             mkdir "${reportDir}"
                             mkdir "${htmlDir}"
 
-                            REM Run analysis to JSON
+                            REM Run analyzer to SARIF
                             sf code-analyzer run --workspace force-app ^
-                                                 --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" || exit 0
+                                                 --format sarif ^
+                                                 --outfile "%WORKSPACE%\\${reportDir}\\${sarifReport}" || exit 0
 
                             REM Generate styled HTML report
-                            if exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
-                                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" ^
+                            if exist "%WORKSPACE%\\${reportDir}\\${sarifReport}" (
+                                sf code-analyzer report --input-file "%WORKSPACE%\\${reportDir}\\${sarifReport}" ^
                                                         --format html ^
                                                         --output-dir "%WORKSPACE%\\${htmlDir}" || exit 0
                             ) else (
-                                echo JSON report not found, skipping HTML report generation
+                                echo SARIF report not found, skipping HTML report generation
                             )
 
                             echo Generated report files:
@@ -152,7 +154,7 @@ node {
                         bat "dir /s ${htmlDir}"
                     }
 
-                    // Archive JSON + HTML reports
+                    // Archive SARIF + HTML reports
                     archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
