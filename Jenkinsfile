@@ -1,4 +1,5 @@
 // ==============================
+
 // Utility Functions
 // ==============================
 def authenticateOrg() {
@@ -34,6 +35,8 @@ def deployToOrg() {
 }
 
 // ==============================
+
+
 // Main Pipeline
 // ==============================
 node {
@@ -61,12 +64,14 @@ node {
                     echo "Workspace cleaned successfully!"
                 }
 
+
                 // --------------------------
                 // Checkout Source
                 // --------------------------
                 stage('Checkout Source') {
                     checkout scm
                 }
+
 
                 // --------------------------
                 // Install Salesforce CLI
@@ -170,6 +175,8 @@ node {
                 }
             }
         }
+            
+        
     } catch (err) {
         echo "Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
