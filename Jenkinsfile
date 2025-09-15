@@ -171,9 +171,9 @@ stage('Static Code Analysis & Publish') {
 
         // Detect HTML file dynamically
         env.HTML_FILE = bat(
-            script: "for %%f in (${htmlDir}\\*.html) do @echo %%~nxf & goto :done\n:done",
-            returnStdout: true
-        ).trim()
+    script: """powershell -Command "Get-ChildItem -Path '${htmlDir}' -Filter '*.html' | Select-Object -First 1 | ForEach-Object { \$_.Name }" """,
+    returnStdout: true
+).trim()
     }
 
     // --------------------------
