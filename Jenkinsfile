@@ -105,10 +105,20 @@ node {
             echo "=== Running Salesforce Code Analyzer v5 (JSON) ==="
             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${reportDir}/${jsonReport}
 
+            if [ ! -f ${reportDir}/${jsonReport} ]; then
+                echo "❌ JSON report missing!"
+                exit 1
+            fi
+
             echo "=== Generating HTML Report from JSON ==="
             sf code-analyzer report html --input-file ${reportDir}/${jsonReport} --output-dir ${htmlDir}
 
-            echo "=== Reports Generated ==="
+            if [ ! -f ${htmlDir}/index.html ]; then
+                echo "❌ HTML report generation failed!"
+                exit 1
+            fi
+
+            echo "✅ Reports Generated Successfully"
             ls -l ${reportDir}
             ls -l ${htmlDir}
         """
@@ -122,10 +132,20 @@ node {
             echo === Running Salesforce Code Analyzer v5 (JSON) ===
             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}"
 
+            if not exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
+                echo ❌ JSON report missing!
+                exit /b 1
+            )
+
             echo === Generating HTML Report from JSON ===
             sf code-analyzer report html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --output-dir "%WORKSPACE%\\${htmlDir}"
 
-            echo === Reports Generated ===
+            if not exist "%WORKSPACE%\\${htmlDir}\\index.html" (
+                echo ❌ HTML report generation failed!
+                exit /b 1
+            )
+
+            echo ✅ Reports Generated Successfully
             dir "%WORKSPACE%\\${reportDir}"
             dir "%WORKSPACE%\\${htmlDir}"
         """
@@ -145,6 +165,7 @@ node {
         reportTitles: 'Static Code Analysis HTML'
     ])
 }
+
 
 
                 /*
