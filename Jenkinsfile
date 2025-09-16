@@ -44,11 +44,6 @@ node {
             file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
         ]) {
 
-            //def reportDir   = 'code-analyzer-report'
-            //def htmlDir     = 'html-report'
-            //def jsonReport  = 'results.json'
-            def htmlReport  = 'index.html'
-
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
                 "ORG_ALIAS=projectdemosfdc"
@@ -71,8 +66,8 @@ node {
                                 npm install --global @salesforce/cli
                             fi
 
-                            echo "Installing Code Analyzer plugin (v5.x)..."
-                            sf plugins install code-analyzer || true
+                            echo "Installing Salesforce Code Analyzer (latest)..."
+                            sf plugins install @salesforce/code-analyzer || true
 
                             echo "Installed plugins:"
                             sf plugins list
@@ -85,8 +80,8 @@ node {
                                 npm install --global @salesforce/cli
                             )
 
-                            echo Installing Code Analyzer plugin (v5.x)...
-                            sf plugins install code-analyzer || exit 0
+                            echo Installing Salesforce Code Analyzer (latest)...
+                            sf plugins install @salesforce/code-analyzer || exit 0
 
                             echo Installed plugins:
                             sf plugins list
@@ -95,115 +90,66 @@ node {
                 }
 
                 // ==============================
-// Static Code Analysis & Publish
-// ==============================
-stage('Static Code Analysis & Publish') {
-    def reportDir  = 'code-analyzer-report'
-    def htmlDir    = 'html-report'
-    def jsonReport = 'results.json'
+                // Static Code Analysis & Publish
+                // ==============================
+                stage('Static Code Analysis & Publish') {
+                    def reportDir  = 'code-analyzer-report'
+                    def htmlDir    = 'html-report'
+                    def jsonReport = 'results.json'
 
-    if (isUnix()) {
-        sh """
-            # Clean previous reports
-            rm -rf ${reportDir} ${htmlDir}
-            mkdir -p ${reportDir} ${htmlDir}
+                    if (isUnix()) {
+                        sh """
+                            rm -rf ${reportDir} ${htmlDir}
+                            mkdir -p ${reportDir} ${htmlDir}
 
-            echo "=== Running Salesforce Code Analyzer ==="
-            sf code-analyzer run --workspace force-app --output-file ${reportDir}/${jsonReport}
-            
-            # Check if JSON report exists
-            if [ ! -f ${reportDir}/${jsonReport} ]; then
-                echo "❌ JSON report not generated. Check analyzer logs."
-                exit 1
-            fi
+                            echo "=== Running Salesforce Code Analyzer ==="
+                            sf code-analyzer run --target force-app --format json --output-file ${reportDir}/${jsonReport}
 
-            echo "=== JSON Report Generated ==="
-            ls -l ${reportDir}
+                            if [ ! -f ${reportDir}/${jsonReport} ]; then
+                                echo "JSON report not generated. Check analyzer logs."
+                                exit 1
+                            fi
 
-            echo "=== Generating HTML Report ==="
-            sf code-analyzer report:html --input-file ${reportDir}/${jsonReport} --output-dir ${htmlDir} --force
+                            echo "=== Generating HTML Report ==="
+                            sf code-analyzer report html --input-file ${reportDir}/${jsonReport} --output-dir ${htmlDir}
 
-            # Verify HTML report
-            if [ ! -d ${htmlDir} ] || [ -z "\$(ls -A ${htmlDir})" ]; then
-                echo "❌ HTML report generation failed."
-                exit 1
-            fi
+                            ls -R ${htmlDir}
+                        """
+                    } else {
+                        bat """
+                            if exist "${reportDir}" rmdir /s /q "${reportDir}"
+                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+                            mkdir "${reportDir}"
+                            mkdir "${htmlDir}"
 
-            echo "=== HTML Report Generated ==="
-            ls -R ${htmlDir}
-        """
+                            echo === Running Salesforce Code Analyzer ===
+                            sf code-analyzer run --target force-app --format json --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}"
 
-        // Detect HTML file dynamically
-        env.HTML_FILE = sh(script: "find ${htmlDir} -name '*.html' | head -n1 | xargs -n1 basename", returnStdout: true).trim()
+                            if not exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
+                                echo JSON report not generated.
+                                exit /b 1
+                            )
 
-    } else {
-        bat """
-            REM Clean previous reports
-            if exist "${reportDir}" rmdir /s /q "${reportDir}"
-            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-            mkdir "${reportDir}"
-            mkdir "${htmlDir}"
+                            echo === Generating HTML Report ===
+                            sf code-analyzer report html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --output-dir "%WORKSPACE%\\${htmlDir}"
 
-            echo === Running Salesforce Code Analyzer ===
-            sf code-analyzer run --workspace force-app --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}"
-            
-            REM Check if JSON report exists
-            if not exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
-                echo ❌ JSON report not generated. Check analyzer logs.
-                exit /b 1
-            )
+                            dir /s "%WORKSPACE%\\${htmlDir}"
+                        """
+                    }
 
-            echo === JSON Report Generated ===
-            dir "%WORKSPACE%\\${reportDir}"
+                    // Publish HTML & JSON reports
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-            echo === Generating HTML Report ===
-            sf code-analyzer report:html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --output-dir "%WORKSPACE%\\${htmlDir}" --force
-
-            REM Verify HTML report
-            if not exist "%WORKSPACE%\\${htmlDir}\\*.html" (
-                echo ❌ HTML report generation failed.
-                exit /b 1
-            )
-
-            echo === HTML Report Generated ===
-            dir /s "%WORKSPACE%\\${htmlDir}"
-        """
-
-        // Detect HTML file dynamically
-        env.HTML_FILE = bat(
-    script: """powershell -Command "Get-ChildItem -Path '${htmlDir}' -Filter '*.html' | Select-Object -First 1 | ForEach-Object { \$_.Name }" """,
-    returnStdout: true
-).trim()
-    }
-
-    // --------------------------
-    // Publish Reports to Jenkins
-    // --------------------------
-    if (env.HTML_FILE) {
-        echo "✅ Detected HTML report file: ${env.HTML_FILE}"
-
-        // Archive JSON & HTML reports
-        archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
-        archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
-
-        // Publish HTML report
-        publishHTML(target: [
-            allowMissing: false,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: htmlDir,
-            reportFiles: '*.html',
-            reportName: 'Salesforce Code Analyzer Dashboard',
-            reportTitles: 'Salesforce Static Analysis',
-            escapeUnderscores: false
-        ])
-
-        echo "📊 Static Analysis Dashboard: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20Dashboard/"
-    } else {
-        error "❌ No HTML report generated, cannot publish to Jenkins."
-    }
-}
-
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: htmlDir,
+                        reportFiles: '*.html',
+                        reportName: 'Salesforce Code Analyzer Dashboard'
+                    ])
+                }
 
                 /*
                 stage('Authenticate Org') {
