@@ -78,9 +78,9 @@ node {
                                 echo "Salesforce CLI already installed."
                             fi
 
-                            # Install/Update Code Analyzer plugin
-                            sf plugins install @salesforce/code-analyzer || echo "Plugin already installed"
-                            sf plugins update @salesforce/code-analyzer
+                            # Install/Update Code Analyzer plugin (sfdx-scanner)
+                            sf plugins install @salesforce/sfdx-scanner || echo "Plugin already installed"
+                            sf plugins update @salesforce/sfdx-scanner
                             sf plugins list
                         '''
                     } else {
@@ -93,9 +93,9 @@ node {
                                 echo Salesforce CLI already installed.
                             )
 
-                            echo Installing/Updating Salesforce Code Analyzer...
-                            sf plugins install @salesforce/code-analyzer || echo Plugin already installed
-                            sf plugins update @salesforce/code-analyzer
+                            echo Installing/Updating Code Analyzer plugin (sfdx-scanner)...
+                            sf plugins install @salesforce/sfdx-scanner || echo Plugin already installed
+                            sf plugins update @salesforce/sfdx-scanner
                             sf plugins list
                         '''
                     }
