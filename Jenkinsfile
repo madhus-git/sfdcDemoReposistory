@@ -58,16 +58,22 @@ node {
                     checkout scm
                 }
 
+                // ==============================
+                // Install Salesforce CLI & Code Analyzer v5
+                // ==============================
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
+                            # Ensure Salesforce CLI installed
                             if ! command -v sf >/dev/null 2>&1; then
-                                echo "Salesforce CLI not found, installing..."
+                                echo "Salesforce CLI not found. Installing..."
                                 npm install --global @salesforce/cli
+                            else
+                                echo "Salesforce CLI already installed."
                             fi
 
-                            echo "Installing Salesforce Code Analyzer v5..."
-                            sf plugins install code-analyzer || true
+                            echo "Installing/Updating Salesforce Code Analyzer (v5)..."
+                            sf plugins install code-analyzer || sf plugins update code-analyzer
 
                             echo "Installed plugins:"
                             sf plugins list
@@ -76,12 +82,14 @@ node {
                         bat '''
                             where sf >nul 2>nul
                             if %ERRORLEVEL% neq 0 (
-                                echo Salesforce CLI not found, installing...
+                                echo Salesforce CLI not found. Installing...
                                 npm install --global @salesforce/cli
+                            ) else (
+                                echo Salesforce CLI already installed.
                             )
 
-                            echo Installing Salesforce Code Analyzer v5...
-                            sf plugins install code-analyzer || exit 0
+                            echo Installing/Updating Salesforce Code Analyzer (v5)...
+                            sf plugins install code-analyzer || sf plugins update code-analyzer
 
                             echo Installed plugins:
                             sf plugins list
@@ -93,80 +101,58 @@ node {
                 // Static Code Analysis & Publish
                 // ==============================
                 stage('Static Code Analysis & Publish') {
-    def reportDir  = 'code-analyzer-report'
-    def htmlDir    = 'html-report'
-    def jsonReport = 'results.json'
+                    def htmlDir    = 'html-report'
+                    def htmlReport = 'CodeAnalyzerReport.html'
 
-    if (isUnix()) {
-        sh """
-            rm -rf ${reportDir} ${htmlDir}
-            mkdir -p ${reportDir} ${htmlDir}
+                    if (isUnix()) {
+                        sh """
+                            rm -rf ${htmlDir}
+                            mkdir -p ${htmlDir}
 
-            echo "=== Running Salesforce Code Analyzer v5 (JSON) ==="
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${reportDir}/${jsonReport}
+                            echo "=== Running Salesforce Code Analyzer v5 (HTML Direct) ==="
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --format html --output-file ${htmlDir}/${htmlReport}
 
-            if [ ! -f ${reportDir}/${jsonReport} ]; then
-                echo "❌ JSON report missing!"
-                exit 1
-            fi
+                            if [ ! -f ${htmlDir}/${htmlReport} ]; then
+                                echo "HTML report generation failed!"
+                                exit 1
+                            fi
 
-            echo "=== Generating HTML Report from JSON ==="
-            sf code-analyzer report html --input-file ${reportDir}/${jsonReport} --output-dir ${htmlDir}
+                            echo "HTML Report Generated Successfully"
+                            ls -l ${htmlDir}
+                        """
+                    } else {
+                        bat """
+                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+                            mkdir "${htmlDir}"
 
-            if [ ! -f ${htmlDir}/index.html ]; then
-                echo "❌ HTML report generation failed!"
-                exit 1
-            fi
+                            echo === Running Salesforce Code Analyzer v5 (HTML Direct) ===
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --format html --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
 
-            echo "✅ Reports Generated Successfully"
-            ls -l ${reportDir}
-            ls -l ${htmlDir}
-        """
-    } else {
-        bat """
-            if exist "${reportDir}" rmdir /s /q "${reportDir}"
-            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-            mkdir "${reportDir}"
-            mkdir "${htmlDir}"
+                            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
+                                echo HTML report generation failed!
+                                exit /b 1
+                            )
 
-            echo === Running Salesforce Code Analyzer v5 (JSON) ===
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}"
+                            echo HTML Report Generated Successfully
+                            dir "%WORKSPACE%\\${htmlDir}"
+                        """
+                    }
 
-            if not exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
-                echo ❌ JSON report missing!
-                exit /b 1
-            )
+                    // Archive & publish HTML report
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-            echo === Generating HTML Report from JSON ===
-            sf code-analyzer report html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --output-dir "%WORKSPACE%\\${htmlDir}"
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: htmlDir,
+                        reportFiles: htmlReport,
+                        reportName: 'Salesforce Code Analyzer v5 Report',
+                        reportTitles: 'Static Code Analysis HTML'
+                    ])
 
-            if not exist "%WORKSPACE%\\${htmlDir}\\index.html" (
-                echo ❌ HTML report generation failed!
-                exit /b 1
-            )
-
-            echo ✅ Reports Generated Successfully
-            dir "%WORKSPACE%\\${reportDir}"
-            dir "%WORKSPACE%\\${htmlDir}"
-        """
-    }
-
-    // Archive & publish
-    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
-    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
-
-    publishHTML(target: [
-        allowMissing: false,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: htmlDir,
-        reportFiles: '*.html',
-        reportName: 'Salesforce Code Analyzer v5 Report',
-        reportTitles: 'Static Code Analysis HTML'
-    ])
-}
-
-
+                    echo "Static Analysis Dashboard: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20v5_20Report/"
+                }
 
                 /*
                 stage('Authenticate Org') {
