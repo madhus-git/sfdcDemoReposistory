@@ -66,8 +66,8 @@ node {
                                 npm install --global @salesforce/cli
                             fi
 
-                            echo "Installing Salesforce Code Analyzer (latest)..."
-                            sf plugins install @salesforce/code-analyzer || true
+                            echo "Installing Salesforce Code Analyzer v5..."
+                            sf plugins install code-analyzer || true
 
                             echo "Installed plugins:"
                             sf plugins list
@@ -80,8 +80,8 @@ node {
                                 npm install --global @salesforce/cli
                             )
 
-                            echo Installing Salesforce Code Analyzer (latest)...
-                            sf plugins install @salesforce/code-analyzer || exit 0
+                            echo Installing Salesforce Code Analyzer v5...
+                            sf plugins install code-analyzer || exit 0
 
                             echo Installed plugins:
                             sf plugins list
@@ -93,64 +93,66 @@ node {
                 // Static Code Analysis & Publish
                 // ==============================
                 stage('Static Code Analysis & Publish') {
-    def reportDir  = 'code-analyzer-report'
-    def htmlDir    = 'html-report'
-    def jsonReport = 'results.json'
+                    def reportDir  = 'code-analyzer-report'
+                    def htmlDir    = 'html-report'
+                    def jsonReport = 'results.json'
+                    def htmlReport = 'results.html'
 
-    if (isUnix()) {
-        sh """
-            rm -rf ${reportDir} ${htmlDir}
-            mkdir -p ${reportDir} ${htmlDir}
+                    if (isUnix()) {
+                        sh """
+                            rm -rf ${reportDir} ${htmlDir}
+                            mkdir -p ${reportDir} ${htmlDir}
 
-            echo "=== Running Salesforce Code Analyzer (v5) ==="
-            sf code-analyzer run --workspace force-app --target force-app --output-file ${reportDir}/${jsonReport}
+                            echo "=== Running Salesforce Code Analyzer v5 (JSON) ==="
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${reportDir}/${jsonReport}
 
-            if [ ! -f ${reportDir}/${jsonReport} ]; then
-                echo "❌ JSON report not generated. Check analyzer logs."
-                exit 1
-            fi
+                            echo "=== Running Salesforce Code Analyzer v5 (HTML) ==="
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
 
-            echo "=== Generating HTML Report ==="
-            sf code-analyzer report html --input-file ${reportDir}/${jsonReport} --output-dir ${htmlDir}
+                            echo "=== Reports Generated ==="
+                            ls -l ${reportDir}
+                            ls -l ${htmlDir}
+                        """
+                        env.HTML_FILE = sh(script: "ls ${htmlDir}/*.html | head -n1 | xargs -n1 basename", returnStdout: true).trim()
+                    } else {
+                        bat """
+                            if exist "${reportDir}" rmdir /s /q "${reportDir}"
+                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+                            mkdir "${reportDir}"
+                            mkdir "${htmlDir}"
 
-            if [ ! -d ${htmlDir} ] || [ -z "\$(ls -A ${htmlDir})" ]; then
-                echo "❌ HTML report generation failed."
-                exit 1
-            fi
+                            echo === Running Salesforce Code Analyzer v5 (JSON) ===
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}"
 
-            echo "=== HTML Report Generated ==="
-            ls -R ${htmlDir}
-        """
-        env.HTML_FILE = sh(script: "find ${htmlDir} -name '*.html' | head -n1 | xargs -n1 basename", returnStdout: true).trim()
-    } else {
-        bat """
-            if exist "${reportDir}" rmdir /s /q "${reportDir}"
-            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-            mkdir "${reportDir}"
-            mkdir "${htmlDir}"
+                            echo === Running Salesforce Code Analyzer v5 (HTML) ===
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
 
-            echo === Running Salesforce Code Analyzer (v5) ===
-            sf code-analyzer run --workspace force-app --target force-app --output-file "%WORKSPACE%\\${reportDir}\\${jsonReport}"
+                            echo === Reports Generated ===
+                            dir "%WORKSPACE%\\${reportDir}"
+                            dir "%WORKSPACE%\\${htmlDir}"
+                        """
+                        env.HTML_FILE = bat(
+                            script: """powershell -Command "Get-ChildItem -Path '${htmlDir}' -Filter '*.html' | Select-Object -First 1 | ForEach-Object { \$_.Name }" """,
+                            returnStdout: true
+                        ).trim()
+                    }
 
-            if not exist "%WORKSPACE%\\${reportDir}\\${jsonReport}" (
-                echo ❌ JSON report not generated.
-                exit /b 1
-            )
+                    // Archive & publish in Jenkins
+                    archiveArtifacts artifacts: "${reportDir}/**", fingerprint: true
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-            echo === Generating HTML Report ===
-            sf code-analyzer report html --input-file "%WORKSPACE%\\${reportDir}\\${jsonReport}" --output-dir "%WORKSPACE%\\${htmlDir}"
+                    publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: htmlDir,
+                        reportFiles: '*.html',
+                        reportName: 'Salesforce Code Analyzer v5 Report',
+                        reportTitles: 'Static Code Analysis HTML'
+                    ])
 
-            dir /s "%WORKSPACE%\\${htmlDir}"
-        """
-        env.HTML_FILE = bat(
-            script: """powershell -Command "Get-ChildItem -Path '${htmlDir}' -Filter '*.html' | Select-Object -First 1 | ForEach-Object { \$_.Name }" """,
-            returnStdout: true
-        ).trim()
-    }
-
-    // Publish etc...
-}
-
+                    echo "Static Analysis Dashboard: ${env.BUILD_URL}Salesforce_20Code_20Analyzer_20v5_20Report/"
+                }
 
                 /*
                 stage('Authenticate Org') {
