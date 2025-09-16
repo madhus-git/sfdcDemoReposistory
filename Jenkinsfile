@@ -101,12 +101,15 @@ node {
 
     // Build URL for direct access
     def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
+    def viewReportUrl = "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
+    echo "View Report URL :: " ${viewReportUrl}
 
     // Log to console
-    echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
+    //echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
+    echo "Open the Salesforce Code Analyzer Report here: ${viewReportUrl}"
 
     // Add clickable link in Jenkins build description (Pipeline-safe)
-    currentBuild.description = "<a href='${reportUrl}' target='_blank'>📊 Salesforce Code Analyzer Report</a>"
+    //currentBuild.description = "<a href='${reportUrl}' target='_blank'>📊 Salesforce Code Analyzer Report</a>"
 }
 
             }
