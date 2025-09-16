@@ -72,9 +72,9 @@ node {
                     echo "Salesforce CLI already installed."
                 fi
 
-                echo "Installing/Updating Salesforce Code Analyzer (v5.3+)..."
-                sf plugins install code-analyzer
-                sf plugins update code-analyzer
+                echo "Installing/Updating Salesforce Code Analyzer (sfdx-scanner)..."
+                sf plugins install @salesforce/sfdx-scanner
+                sf plugins update @salesforce/sfdx-scanner
 
                 echo "Installed plugins:"
                 sf plugins list
@@ -89,9 +89,9 @@ node {
                     echo Salesforce CLI already installed.
                 )
 
-                echo Installing/Updating Salesforce Code Analyzer (v5.3+)... 
-                sf plugins install code-analyzer
-                sf plugins update code-analyzer
+                echo Installing/Updating Salesforce Code Analyzer (sfdx-scanner)...
+                sf plugins install @salesforce/sfdx-scanner
+                sf plugins update @salesforce/sfdx-scanner
 
                 echo Installed plugins:
                 sf plugins list
@@ -111,15 +111,15 @@ node {
                 rm -rf ${htmlDir}
                 mkdir -p ${htmlDir}
 
-                echo "=== Running Salesforce Code Analyzer v5 (HTML Direct) ==="
+                echo "=== Running Salesforce Code Analyzer (HTML Direct) ==="
                 sf code-analyzer run --workspace force-app --rule-selector Recommended --format html --output-file ${htmlDir}/${htmlReport}
 
                 if [ ! -f ${htmlDir}/${htmlReport} ]; then
-                    echo "❌ HTML report generation failed!"
+                    echo "HTML report generation failed!"
                     exit 1
                 fi
 
-                echo "✅ HTML Report Generated Successfully"
+                echo "HTML Report Generated Successfully"
                 ls -l ${htmlDir}
             """
         } else {
@@ -127,15 +127,15 @@ node {
                 if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                 mkdir "${htmlDir}"
 
-                echo === Running Salesforce Code Analyzer v5 (HTML Direct) ===
+                echo === Running Salesforce Code Analyzer (HTML Direct) ===
                 sf code-analyzer run --workspace force-app --rule-selector Recommended --format html --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
 
                 if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
-                    echo ❌ HTML report generation failed!
+                    echo HTML report generation failed!
                     exit /b 1
                 )
 
-                echo ✅ HTML Report Generated Successfully
+                echo HTML Report Generated Successfully
                 dir "%WORKSPACE%\\${htmlDir}"
             """
         }
