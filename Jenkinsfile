@@ -84,71 +84,77 @@ node {
 
                 // Static Code Analysis
                 stage('Static Code Analysis & Publish') {
-    def htmlDir    = 'html-report'
-    def htmlReport = 'CodeAnalyzerReport.html'
+                    def htmlDir    = 'html-report'
+                    def htmlReport = 'CodeAnalyzerReport.html'
 
-    if (isUnix()) {
-        sh """
-            rm -rf ${htmlDir}
-            mkdir -p ${htmlDir}
+                    if (isUnix()) {
+                        sh """
+                            rm -rf ${htmlDir}
+                            mkdir -p ${htmlDir}
 
-            echo "=== Running Salesforce Code Analyzer ==="
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
+                            echo "=== Running Salesforce Code Analyzer ==="
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
 
-            if [ ! -f ${htmlDir}/${htmlReport} ]; then
-                echo "HTML report generation failed!"
-                exit 1
-            fi
+                            if [ ! -f ${htmlDir}/${htmlReport} ]; then
+                                echo "HTML report generation failed!"
+                                exit 1
+                            fi
 
-            echo "HTML Report Generated Successfully:"
-            ls -R ${htmlDir}
-        """
-    } else {
-        bat """
-            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-            mkdir "${htmlDir}"
+                            echo "HTML Report Generated Successfully:"
+                            ls -R ${htmlDir}
+                        """
+                    } else {
+                        bat """
+                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+                            mkdir "${htmlDir}"
 
-            echo === Running Salesforce Code Analyzer ===
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
+                            echo === Running Salesforce Code Analyzer ===
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
 
-            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
-                echo HTML report generation failed!
-                exit /b 1
-            )
+                            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
+                                echo HTML report generation failed!
+                                exit /b 1
+                            )
 
-            echo HTML Report Generated Successfully:
-            dir /s "%WORKSPACE%\\${htmlDir}"
-        """
-    }
+                            echo HTML Report Generated Successfully:
+                            dir /s "%WORKSPACE%\\${htmlDir}"
+                        """
+                     }
 
-    // Archive report
-    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
+                    // Archive report
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-    // Publish HTML
-    publishHTML(target: [
-        allowMissing: false,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: htmlDir,
-        reportFiles: htmlReport,
-        reportName: 'Salesforce Code Analyzer Report',
-        reportTitles: 'Static Code Analysis HTML'
-    ])
+                    // Build URL for direct access
+                    def reportUrl = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
+                    echo "View Report URL :: ${reportUrl}"
 
-    // ✅ Links
-    def artifactUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
-    def htmlTabUrl  = "${env.BUILD_URL}Salesforce_Code_Analyzer_Report/"
+                    // Log to console
+                    echo "Open the Salesforce Code Analyzer Report here: ${reportUrl}"
 
-    echo "➡ Artifact Report (raw HTML): ${artifactUrl}"
-    echo "➡ Published Dashboard (with Jenkins UI): ${htmlTabUrl}"
+                    // Publish HTML
+                    /*publishHTML(target: [
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: htmlDir,
+                        reportFiles: htmlReport,
+                        reportName: 'Salesforce Code Analyzer Report',
+                        reportTitles: 'Static Code Analysis HTML'
+                    ])
 
-    // ✅ Add both links in build description
-    currentBuild.description = """
-        <a href='${artifactUrl}' target='_blank'>📄 Artifact Report</a><br>
-        <a href='${htmlTabUrl}' target='_blank'>📊 Published Dashboard</a>
-    """
-}
+                    // Links
+                    def artifactUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
+                    def htmlTabUrl  = "${env.BUILD_URL}Salesforce_Code_Analyzer_Report/"
 
+                    echo "Artifact Report (raw HTML): ${artifactUrl}"
+                    echo "Published Dashboard (with Jenkins UI): ${htmlTabUrl}"*/
+
+                    // Add both links in build description
+                    /*currentBuild.description = """
+                        <a href='${artifactUrl}' target='_blank'>📄 Artifact Report</a><br>
+                        <a href='${htmlTabUrl}' target='_blank'>📊 Published Dashboard</a>
+                    """*/
+                }
 
                 // Authenticate Org
                 /*stage('Authenticate Org') {
