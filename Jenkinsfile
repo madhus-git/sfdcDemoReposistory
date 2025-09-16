@@ -105,7 +105,7 @@ node {
                         rm -rf ${htmlDir}
                         mkdir -p ${htmlDir}
 
-                        echo "=== Running Salesforce Code Analyzer (HTML Direct) ==="
+                        echo "=== Running Salesforce Code Analyzer (HTML Direct - Linux) ==="
                         sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
 
                         if [ ! -f ${htmlDir}/${htmlReport} ]; then
@@ -142,7 +142,7 @@ node {
                     keepAll: true,
                     reportDir: htmlDir,
                     reportFiles: htmlReport,
-                    reportName: 'Salesforce Code Analyzer v5 Report',
+                    reportName: 'Salesforce Code Analyzer Report',
                     reportTitles: 'Static Code Analysis HTML'
                 ])
             }
