@@ -49,24 +49,15 @@ node {
                 "ORG_ALIAS=projectdemosfdc"
             ]) {
 
-                // ------------------------------
-                // Clean Workspace
-                // ------------------------------
                 stage('Clean Workspace') {
                     cleanWs()
                     echo "Workspace cleaned successfully!"
                 }
 
-                // ------------------------------
-                // Checkout Source
-                // ------------------------------
                 stage('Checkout Source') {
                     checkout scm
                 }
 
-                // ------------------------------
-                // Install Salesforce CLI & Code Analyzer
-                // ------------------------------
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
@@ -96,9 +87,6 @@ node {
                     }
                 }
 
-                // ------------------------------
-                // Static Code Analysis & Publish HTML Report
-                // ------------------------------
                 stage('Static Code Analysis & Publish') {
                     def htmlDir    = 'html-report'
                     def htmlReport = 'CodeAnalyzerReport.html'
@@ -115,9 +103,6 @@ node {
                                 echo "HTML report generation failed!"
                                 exit 1
                             fi
-
-                            echo "HTML Report Generated Successfully:"
-                            ls -R ${htmlDir}
                         """
                     } else {
                         bat """
@@ -131,16 +116,21 @@ node {
                                 echo HTML report generation failed!
                                 exit /b 1
                             )
-
-                            echo HTML Report Generated Successfully:
-                            dir /s "%WORKSPACE%\\${htmlDir}"
                         """
                     }
 
                     // Archive all report assets
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-                    // Publish HTML report safely
+                    // ============================
+                    // FIX: Allow JS & CSS in HTML report
+                    // ============================
+                    System.setProperty(
+                        "hudson.model.DirectoryBrowserSupport.CSP",
+                        "sandbox allow-same-origin allow-scripts; default-src 'self'; script-src * 'unsafe-eval'; img-src *; style-src * 'unsafe-inline'; font-src *"
+                    )
+
+                    // Publish HTML report
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -148,13 +138,12 @@ node {
                         reportDir: htmlDir,
                         reportFiles: htmlReport,
                         reportName: 'Salesforce Code Analyzer Report',
-                        reportTitles: 'Static Code Analysis HTML',
-                        wrapperStyle: 'overflow:auto;'
+                        reportTitles: 'Static Code Analysis HTML'
                     ])
                 }
 
                 // ------------------------------
-                // Optional: Authenticate & Deploy (commented)
+                // Optional: Authenticate & Deploy
                 // ------------------------------
                 /*
                 stage('Authenticate Org') {
