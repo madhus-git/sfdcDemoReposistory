@@ -51,7 +51,6 @@ node {
 
                 stage('Clean Workspace') {
                     cleanWs()
-                    echo "Workspace cleaned successfully!"
                 }
 
                 stage('Checkout Source') {
@@ -62,12 +61,8 @@ node {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
-                                echo "Installing Salesforce CLI..."
                                 npm install --global @salesforce/cli
-                            else
-                                echo "Salesforce CLI already installed."
                             fi
-
                             sf plugins install @salesforce/sfdx-scanner || echo "Plugin already installed"
                             sf plugins update @salesforce/sfdx-scanner
                         '''
@@ -75,19 +70,15 @@ node {
                         bat '''
                             where sf >nul 2>nul
                             if %ERRORLEVEL% neq 0 (
-                                echo Installing Salesforce CLI...
                                 npm install --global @salesforce/cli
-                            ) else (
-                                echo Salesforce CLI already installed.
                             )
-
                             sf plugins install @salesforce/sfdx-scanner || echo Plugin already installed
                             sf plugins update @salesforce/sfdx-scanner
                         '''
                     }
                 }
 
-                stage('Static Code Analysis & Publish') {
+                stage('Static Code Analysis') {
                     def htmlDir    = 'html-report'
                     def htmlReport = 'CodeAnalyzerReport.html'
 
@@ -95,65 +86,29 @@ node {
                         sh """
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
-
-                            echo "=== Running Salesforce Code Analyzer ==="
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
-
-                            if [ ! -f ${htmlDir}/${htmlReport} ]; then
-                                echo "HTML report generation failed!"
-                                exit 1
-                            fi
                         """
                     } else {
                         bat """
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
-
-                            echo === Running Salesforce Code Analyzer ===
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
-
-                            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
-                                echo HTML report generation failed!
-                                exit /b 1
-                            )
                         """
                     }
 
-                    // Archive all report assets
+                    // Archive report artifacts
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-                    // ============================
-                    // FIX: Allow JS & CSS in HTML report
-                    // ============================
-                    System.setProperty(
-                        "hudson.model.DirectoryBrowserSupport.CSP",
-                        "sandbox allow-same-origin allow-scripts; default-src 'self'; script-src * 'unsafe-eval'; img-src *; style-src * 'unsafe-inline'; font-src *"
-                    )
+                    // Build URL for direct access
+                    def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
 
-                    // Publish HTML report
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: htmlDir,
-                        reportFiles: htmlReport,
-                        reportName: 'Salesforce Code Analyzer Report',
-                        reportTitles: 'Static Code Analysis HTML'
-                    ])
-                }
+                    // Log to console
+                    echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
 
-                // ------------------------------
-                // Optional: Authenticate & Deploy
-                // ------------------------------
-                /*
-                stage('Authenticate Org') {
-                    authenticateOrg()
+                    // Add clickable link in Jenkins Build Summary
+                    manager.createSummary("graph.png") // use a generic icon
+                           .appendText("<a href='${reportUrl}' target='_blank'>📊 View Salesforce Code Analyzer Report</a>", false, false, false, "red")
                 }
-
-                stage('Deploy to Org') {
-                    deployToOrg()
-                }
-                */
             }
         }
     } catch (err) {
