@@ -49,14 +49,17 @@ node {
                 "ORG_ALIAS=projectdemosfdc"
             ]) {
 
+                // Clean-up Workspace
                 stage('Clean Workspace') {
                     cleanWs()
                 }
 
+                // Checkout Source Code
                 stage('Checkout Source') {
                     checkout scm
                 }
 
+                // Install Prerequisites
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
@@ -78,43 +81,46 @@ node {
                     }
                 }
 
+                // Static Code Analysis
                 stage('Static Code Analysis') {
-    def htmlDir    = 'html-report'
-    def htmlReport = 'CodeAnalyzerReport.html'
+                    def htmlDir    = 'html-report'
+                    def htmlReport = 'CodeAnalyzerReport.html'
 
-    if (isUnix()) {
-        sh """
-            rm -rf ${htmlDir}
-            mkdir -p ${htmlDir}
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
-        """
-    } else {
-        bat """
-            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-            mkdir "${htmlDir}"
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
-        """
-    }
+                    if (isUnix()) {
+                        sh """
+                            rm -rf ${htmlDir}
+                            mkdir -p ${htmlDir}
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
+                        """
+                    } else {
+                        bat """
+                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+                            mkdir "${htmlDir}"
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
+                        """
+                    }
 
-    // Archive report artifacts
-    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
+                    // Archive report artifacts
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-    // Build URL for direct access
-    def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
-    def viewReportUrl = "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
-    echo "View Report URL :: ${viewReportUrl}"
+                    // Build URL for direct access
+                    def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
+                    def viewReportUrl = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
+                    echo "View Report URL :: ${viewReportUrl}"
 
-    def test = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
-    echo "View Report URL 11 :: " + test
+                    // Log to console
+                    echo "Open the Salesforce Code Analyzer Report here: ${viewReportUrl}"
+                }
 
-    // Log to console
-    //echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
-    echo "Open the Salesforce Code Analyzer Report here: ${viewReportUrl}"
+                // Authenticate Org
+                /*stage('Authenticate Org') {
+                    authenticateOrg()
+                }
 
-    // Add clickable link in Jenkins build description (Pipeline-safe)
-    //currentBuild.description = "<a href='${reportUrl}' target='_blank'>📊 Salesforce Code Analyzer Report</a>"
-}
-
+                // Deploy to Org
+                stage('Deploy to Org') {
+                    deployToOrg()
+                }*/
             }
         }
     } catch (err) {
