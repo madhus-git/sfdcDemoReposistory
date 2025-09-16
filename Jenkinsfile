@@ -79,36 +79,36 @@ node {
                 }
 
                 stage('Static Code Analysis') {
-                    def htmlDir    = 'html-report'
-                    def htmlReport = 'CodeAnalyzerReport.html'
+    def htmlDir    = 'html-report'
+    def htmlReport = 'CodeAnalyzerReport.html'
 
-                    if (isUnix()) {
-                        sh """
-                            rm -rf ${htmlDir}
-                            mkdir -p ${htmlDir}
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
-                        """
-                    } else {
-                        bat """
-                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-                            mkdir "${htmlDir}"
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
-                        """
-                    }
+    if (isUnix()) {
+        sh """
+            rm -rf ${htmlDir}
+            mkdir -p ${htmlDir}
+            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
+        """
+    } else {
+        bat """
+            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+            mkdir "${htmlDir}"
+            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
+        """
+    }
 
-                    // Archive report artifacts
-                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
+    // Archive report artifacts
+    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-                    // Build URL for direct access
-                    def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
+    // Build URL for direct access
+    def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
 
-                    // Log to console
-                    echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
+    // Log to console
+    echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
 
-                    // Add clickable link in Jenkins Build Summary
-                    manager.createSummary("graph.png") // use a generic icon
-                           .appendText("<a href='${reportUrl}' target='_blank'>📊 View Salesforce Code Analyzer Report</a>", false, false, false, "red")
-                }
+    // Add clickable link in Jenkins build description (Pipeline-safe)
+    currentBuild.description = "<a href='${reportUrl}' target='_blank'>📊 Salesforce Code Analyzer Report</a>"
+}
+
             }
         }
     } catch (err) {
