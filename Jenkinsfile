@@ -97,7 +97,7 @@ node {
                 }
 
                 // ------------------------------
-                // Static Code Analysis & Publish HTML Report (Sandbox-Safe)
+                // Static Code Analysis & Publish HTML Report
                 // ------------------------------
                 stage('Static Code Analysis & Publish') {
                     def htmlDir    = 'html-report'
@@ -105,20 +105,17 @@ node {
 
                     if (isUnix()) {
                         sh """
-                            # Clean previous report
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
 
-                            echo "=== Running Salesforce Code Analyzer (Linux) ==="
+                            echo "=== Running Salesforce Code Analyzer ==="
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
 
-                            # Verify report generated
                             if [ ! -f ${htmlDir}/${htmlReport} ]; then
                                 echo "HTML report generation failed!"
                                 exit 1
                             fi
 
-                            # List generated files for verification
                             echo "HTML Report Generated Successfully:"
                             ls -R ${htmlDir}
                         """
@@ -127,7 +124,7 @@ node {
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
 
-                            echo === Running Salesforce Code Analyzer (Windows) ===
+                            echo === Running Salesforce Code Analyzer ===
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
 
                             if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
@@ -140,10 +137,10 @@ node {
                         """
                     }
 
-                    // Archive all report assets (CSS, JS, images) in html-report folder
+                    // Archive all report assets
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-                    // Sandbox-safe HTML publishing
+                    // Publish HTML report safely
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -152,12 +149,12 @@ node {
                         reportFiles: htmlReport,
                         reportName: 'Salesforce Code Analyzer Report',
                         reportTitles: 'Static Code Analysis HTML',
-                        wrapperStyle: 'overflow:auto;'  // Prevent overflow and improve rendering
+                        wrapperStyle: 'overflow:auto;'
                     ])
                 }
 
                 // ------------------------------
-                // Optional: Authenticate Org & Deploy
+                // Optional: Authenticate & Deploy (commented)
                 // ------------------------------
                 /*
                 stage('Authenticate Org') {
