@@ -1,13 +1,4 @@
 // ==============================
-// Minimal Jenkins CSP Override
-// ==============================
-// Allows full HTML rendering for Salesforce Code Analyzer reports
-System.setProperty(
-    "hudson.model.DirectoryBrowserSupport.CSP",
-    "sandbox allow-same-origin allow-scripts; default-src 'self'; script-src * 'unsafe-eval'; img-src *; style-src * 'unsafe-inline'; font-src *"
-)
-
-// ==============================
 // Utility Functions
 // ==============================
 def authenticateOrg() {
@@ -79,7 +70,6 @@ node {
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
-                            # Install Salesforce CLI if not present
                             if ! command -v sf >/dev/null 2>&1; then
                                 echo "Installing Salesforce CLI..."
                                 npm install --global @salesforce/cli
@@ -87,10 +77,8 @@ node {
                                 echo "Salesforce CLI already installed."
                             fi
 
-                            # Install/Update Code Analyzer plugin (sfdx-scanner)
                             sf plugins install @salesforce/sfdx-scanner || echo "Plugin already installed"
                             sf plugins update @salesforce/sfdx-scanner
-                            sf plugins list
                         '''
                     } else {
                         bat '''
@@ -102,16 +90,14 @@ node {
                                 echo Salesforce CLI already installed.
                             )
 
-                            echo Installing/Updating Code Analyzer plugin (sfdx-scanner)...
                             sf plugins install @salesforce/sfdx-scanner || echo Plugin already installed
                             sf plugins update @salesforce/sfdx-scanner
-                            sf plugins list
                         '''
                     }
                 }
 
                 // ------------------------------
-                // Static Code Analysis & Publish HTML Report
+                // Static Code Analysis & Publish HTML Report (Sandbox-Safe)
                 // ------------------------------
                 stage('Static Code Analysis & Publish') {
                     def htmlDir    = 'html-report'
@@ -119,26 +105,29 @@ node {
 
                     if (isUnix()) {
                         sh """
+                            # Clean previous report
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
 
-                            echo "=== Running Salesforce Code Analyzer (HTML Direct - Linux) ==="
+                            echo "=== Running Salesforce Code Analyzer (Linux) ==="
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
 
+                            # Verify report generated
                             if [ ! -f ${htmlDir}/${htmlReport} ]; then
                                 echo "HTML report generation failed!"
                                 exit 1
                             fi
 
-                            echo "HTML Report Generated Successfully"
-                            ls -l ${htmlDir}
+                            # List generated files for verification
+                            echo "HTML Report Generated Successfully:"
+                            ls -R ${htmlDir}
                         """
                     } else {
                         bat """
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
 
-                            echo === Running Salesforce Code Analyzer (HTML Direct) ===
+                            echo === Running Salesforce Code Analyzer (Windows) ===
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
 
                             if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
@@ -146,13 +135,15 @@ node {
                                 exit /b 1
                             )
 
-                            echo HTML Report Generated Successfully
-                            dir "%WORKSPACE%\\${htmlDir}"
+                            echo HTML Report Generated Successfully:
+                            dir /s "%WORKSPACE%\\${htmlDir}"
                         """
                     }
 
+                    // Archive all report assets (CSS, JS, images) in html-report folder
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
+                    // Sandbox-safe HTML publishing
                     publishHTML(target: [
                         allowMissing: false,
                         alwaysLinkToLastBuild: true,
@@ -160,23 +151,23 @@ node {
                         reportDir: htmlDir,
                         reportFiles: htmlReport,
                         reportName: 'Salesforce Code Analyzer Report',
-                        reportTitles: 'Static Code Analysis HTML'
+                        reportTitles: 'Static Code Analysis HTML',
+                        wrapperStyle: 'overflow:auto;'  // Prevent overflow and improve rendering
                     ])
                 }
 
                 // ------------------------------
-                // Authenticate Org (Optional)
+                // Optional: Authenticate Org & Deploy
                 // ------------------------------
-                /*stage('Authenticate Org') {
+                /*
+                stage('Authenticate Org') {
                     authenticateOrg()
                 }
 
-                // ------------------------------
-                // Deploy to Org (Optional)
-                // ------------------------------
                 stage('Deploy to Org') {
                     deployToOrg()
-                }*/
+                }
+                */
             }
         }
     } catch (err) {
