@@ -102,7 +102,10 @@ node {
     // Build URL for direct access
     def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
     def viewReportUrl = "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
-    echo "View Report URL :: " ${viewReportUrl}
+    echo "View Report URL :: ${viewReportUrl}"
+
+    def test = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
+    echo "View Report URL 11 :: " + test
 
     // Log to console
     //echo "➡ Open the Salesforce Code Analyzer Report here: ${reportUrl}"
