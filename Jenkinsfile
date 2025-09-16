@@ -52,6 +52,7 @@ node {
                 // Clean-up Workspace
                 stage('Clean Workspace') {
                     cleanWs()
+                    echo "Workspace cleaned successfully!"
                 }
 
                 // Checkout Source Code
@@ -82,35 +83,72 @@ node {
                 }
 
                 // Static Code Analysis
-                stage('Static Code Analysis') {
-                    def htmlDir    = 'html-report'
-                    def htmlReport = 'CodeAnalyzerReport.html'
+                stage('Static Code Analysis & Publish') {
+    def htmlDir    = 'html-report'
+    def htmlReport = 'CodeAnalyzerReport.html'
 
-                    if (isUnix()) {
-                        sh """
-                            rm -rf ${htmlDir}
-                            mkdir -p ${htmlDir}
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
-                        """
-                    } else {
-                        bat """
-                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-                            mkdir "${htmlDir}"
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
-                        """
-                    }
+    if (isUnix()) {
+        sh """
+            rm -rf ${htmlDir}
+            mkdir -p ${htmlDir}
 
-                    // Archive report artifacts
-                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
+            echo "=== Running Salesforce Code Analyzer ==="
+            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
 
-                    // Build URL for direct access
-                    def reportUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
-                    def viewReportUrl = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
-                    echo "View Report URL :: ${viewReportUrl}"
+            if [ ! -f ${htmlDir}/${htmlReport} ]; then
+                echo "HTML report generation failed!"
+                exit 1
+            fi
 
-                    // Log to console
-                    echo "Open the Salesforce Code Analyzer Report here: ${viewReportUrl}"
-                }
+            echo "HTML Report Generated Successfully:"
+            ls -R ${htmlDir}
+        """
+    } else {
+        bat """
+            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+            mkdir "${htmlDir}"
+
+            echo === Running Salesforce Code Analyzer ===
+            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
+
+            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
+                echo HTML report generation failed!
+                exit /b 1
+            )
+
+            echo HTML Report Generated Successfully:
+            dir /s "%WORKSPACE%\\${htmlDir}"
+        """
+    }
+
+    // Archive report
+    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
+
+    // Publish HTML
+    publishHTML(target: [
+        allowMissing: false,
+        alwaysLinkToLastBuild: true,
+        keepAll: true,
+        reportDir: htmlDir,
+        reportFiles: htmlReport,
+        reportName: 'Salesforce Code Analyzer Report',
+        reportTitles: 'Static Code Analysis HTML'
+    ])
+
+    // ✅ Links
+    def artifactUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
+    def htmlTabUrl  = "${env.BUILD_URL}Salesforce_Code_Analyzer_Report/"
+
+    echo "➡ Artifact Report (raw HTML): ${artifactUrl}"
+    echo "➡ Published Dashboard (with Jenkins UI): ${htmlTabUrl}"
+
+    // ✅ Add both links in build description
+    currentBuild.description = """
+        <a href='${artifactUrl}' target='_blank'>📄 Artifact Report</a><br>
+        <a href='${htmlTabUrl}' target='_blank'>📊 Published Dashboard</a>
+    """
+}
+
 
                 // Authenticate Org
                 /*stage('Authenticate Org') {
