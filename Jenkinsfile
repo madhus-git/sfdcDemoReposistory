@@ -33,6 +33,36 @@ def deployToOrg() {
     }
 }
 
+def validatePreDeployment(){
+    if (isUnix()) {
+        sh "sf project deploy validate --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
+    } else {
+        bat "sf project deploy validate --target-org %ORG_ALIAS% --ignore-conflicts --wait 10"
+    }
+}
+
+def apexTestExecution(){
+    try {
+        if (isUnix()) {
+            sh """
+                echo "Running Apex Unit Tests in Org: $ORG_ALIAS ..."
+                sf apex run test --target-org $ORG_ALIAS --result-format junit --output-dir test-results --wait 10
+            """
+        } else {
+            bat """
+                echo Running Apex Unit Tests in Org: %ORG_ALIAS% ...
+                sf apex run test --target-org %ORG_ALIAS% --result-format junit --output-dir test-results --wait 10
+            """
+        }
+
+        // Archive test results
+        junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
+
+    } catch (Exception e) {
+        error "Apex Unit Tests failed. Please check test results in Jenkins."
+    }
+}
+
 // ==============================
 // Main Pipeline
 // ==============================
@@ -157,13 +187,33 @@ node {
                 }
 
                 // Authenticate Org
-                /*stage('Authenticate Org') {
+                stage('Authenticate Org') {
                     authenticateOrg()
+                }
+
+                // Validate Pre-Deployment
+                stage('Pre-Deployment Validation') {
+                    validatePreDeployment()
                 }
 
                 // Deploy to Org
                 stage('Deploy to Org') {
                     deployToOrg()
+                }
+
+                // Apex Unit Tests
+                stage('Apex Test Execution') {
+                    apexTestExecution()
+                }
+
+                // Post-Deployment Verification
+                stage('Post-Deployment Verification') {
+                    echo "Deployment & tests completed successfully for $ORG_ALIAS!"
+                }
+
+                // Notifications
+                /*stage('Notifications') {
+                    echo "Send notification to Slack/Email (integration needed)."
                 }*/
             }
         }
