@@ -70,17 +70,17 @@ def authenticateOrg() {
 
 def deployToOrg() {
     if (isUnix()) {
-        sh "sf project deploy start --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
+        sh "sf project deploy start --target-org $ORG_ALIAS --ignore-conflict --wait 10"
     } else {
-        bat "sf project deploy start --target-org %ORG_ALIAS% --ignore-conflicts --wait 10"
+        bat "sf project deploy start --target-org %ORG_ALIAS% --ignore-conflict --wait 10"
     }
 }
 
 def validatePreDeployment() {
     if (isUnix()) {
-        sh "sf project deploy validate --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
+        sh "sf project deploy validate --target-org $ORG_ALIAS --ignore-conflict --wait 10"
     } else {
-        bat "sf project deploy validate --target-org %ORG_ALIAS% --ignore-conflicts --wait 10"
+        bat "sf project deploy validate --target-org %ORG_ALIAS% --ignore-conflict --wait 10"
     }
 }
 
