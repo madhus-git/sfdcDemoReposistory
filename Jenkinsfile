@@ -1,25 +1,68 @@
 // ==============================
 // Utility Functions
 // ==============================
+def preCheckCredentials() {
+    if (isUnix()) {
+        sh """
+            echo "=== Pre-Check: Validating Salesforce Credentials ==="
+            if [ -z "$CONNECTED_APP_CONSUMER_KEY" ]; then
+                echo "❌ Missing CONNECTED_APP_CONSUMER_KEY"; exit 1
+            fi
+            if [ -z "$SFDC_USERNAME" ]; then
+                echo "❌ Missing SFDC_USERNAME"; exit 1
+            fi
+            if [ ! -f "$JWT_KEY_FILE" ]; then
+                echo "❌ Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
+            fi
+            echo "✅ All credentials found!"
+        """
+    } else {
+        bat """
+            echo === Pre-Check: Validating Salesforce Credentials ===
+            if "%CONNECTED_APP_CONSUMER_KEY%"=="" (
+                echo ❌ Missing CONNECTED_APP_CONSUMER_KEY
+                exit /b 1
+            )
+            if "%SFDC_USERNAME%"=="" (
+                echo ❌ Missing SFDC_USERNAME
+                exit /b 1
+            )
+            if not exist "%JWT_KEY_FILE%" (
+                echo ❌ Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
+                exit /b 1
+            )
+            echo ✅ All credentials found!
+        """
+    }
+}
+
 def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
+            echo Using client-id: $CONNECTED_APP_CONSUMER_KEY
+            echo Using username: $SFDC_USERNAME
+            echo Using key file: $JWT_KEY_FILE
+
             sf org login jwt \
-                --client-id "$CONNECTED_APP_CONSUMER_KEY" \
-                --jwt-key-file "$JWT_KEY_FILE" \
-                --username "$SFDC_USERNAME" \
-                --alias "$ORG_ALIAS" \
-                --instance-url "$SFDC_HOST"
+                --client-id $CONNECTED_APP_CONSUMER_KEY \
+                --jwt-key-file $JWT_KEY_FILE \
+                --username $SFDC_USERNAME \
+                --alias $ORG_ALIAS \
+                --instance-url $SFDC_HOST
         """
     } else {
         bat """
             echo Authenticating to Salesforce Org: %ORG_ALIAS%
-            sf org login jwt ^ 
-                --client-id %CONNECTED_APP_CONSUMER_KEY% ^ 
-                --jwt-key-file %JWT_KEY_FILE% ^ 
-                --username %SFDC_USERNAME% ^ 
-                --alias %ORG_ALIAS% ^ 
+            echo Using client-id: %CONNECTED_APP_CONSUMER_KEY%
+            echo Using username: %SFDC_USERNAME%
+            echo Using key file: %JWT_KEY_FILE%
+
+            sf org login jwt ^
+                --client-id %CONNECTED_APP_CONSUMER_KEY% ^
+                --jwt-key-file %JWT_KEY_FILE% ^
+                --username %SFDC_USERNAME% ^
+                --alias %ORG_ALIAS% ^
                 --instance-url %SFDC_HOST%
         """
     }
@@ -33,7 +76,7 @@ def deployToOrg() {
     }
 }
 
-def validatePreDeployment(){
+def validatePreDeployment() {
     if (isUnix()) {
         sh "sf project deploy validate --target-org $ORG_ALIAS --ignore-conflicts --wait 10"
     } else {
@@ -41,7 +84,7 @@ def validatePreDeployment(){
     }
 }
 
-def apexTestExecution(){
+def apexTestExecution() {
     try {
         if (isUnix()) {
             sh """
@@ -55,7 +98,6 @@ def apexTestExecution(){
             """
         }
 
-        // Archive test results
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
 
     } catch (Exception e) {
@@ -79,18 +121,15 @@ node {
                 "ORG_ALIAS=projectdemosfdc"
             ]) {
 
-                // Clean-up Workspace
                 stage('Clean Workspace') {
                     cleanWs()
                     echo "Workspace cleaned successfully!"
                 }
 
-                // Checkout Source Code
                 stage('Checkout Source') {
                     checkout scm
                 }
 
-                // Install Prerequisites
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
@@ -112,7 +151,6 @@ node {
                     }
                 }
 
-                // Static Code Analysis
                 stage('Static Code Analysis & Publish') {
                     def htmlDir    = 'html-report'
                     def htmlReport = 'CodeAnalyzerReport.html'
@@ -149,72 +187,36 @@ node {
                             echo HTML Report Generated Successfully:
                             dir /s "%WORKSPACE%\\${htmlDir}"
                         """
-                     }
+                    }
 
-                    // Archive report
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
-
-                    // Build URL for direct access
                     def reportUrl = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
                     echo "View Report URL :: ${reportUrl}"
-
-                    // Log to console
-                    echo "Open the Salesforce Code Analyzer Report here: ${reportUrl}"
-
-                    // Publish HTML
-                    /*publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: htmlDir,
-                        reportFiles: htmlReport,
-                        reportName: 'Salesforce Code Analyzer Report',
-                        reportTitles: 'Static Code Analysis HTML'
-                    ])
-
-                    // Links
-                    def artifactUrl = "${env.BUILD_URL}artifact/${htmlDir}/${htmlReport}"
-                    def htmlTabUrl  = "${env.BUILD_URL}Salesforce_Code_Analyzer_Report/"
-
-                    echo "Artifact Report (raw HTML): ${artifactUrl}"
-                    echo "Published Dashboard (with Jenkins UI): ${htmlTabUrl}"*/
-
-                    // Add both links in build description
-                    /*currentBuild.description = """
-                        <a href='${artifactUrl}' target='_blank'>📄 Artifact Report</a><br>
-                        <a href='${htmlTabUrl}' target='_blank'>📊 Published Dashboard</a>
-                    """*/
                 }
 
-                // Authenticate Org
+                stage('Pre-Check Credentials') {
+                    preCheckCredentials()
+                }
+
                 stage('Authenticate Org') {
                     authenticateOrg()
                 }
 
-                // Validate Pre-Deployment
                 stage('Pre-Deployment Validation') {
                     validatePreDeployment()
                 }
 
-                // Deploy to Org
                 stage('Deploy to Org') {
                     deployToOrg()
                 }
 
-                // Apex Unit Tests
                 stage('Apex Test Execution') {
                     apexTestExecution()
                 }
 
-                // Post-Deployment Verification
                 stage('Post-Deployment Verification') {
                     echo "Deployment & tests completed successfully for $ORG_ALIAS!"
                 }
-
-                // Notifications
-                /*stage('Notifications') {
-                    echo "Send notification to Slack/Email (integration needed)."
-                }*/
             }
         }
     } catch (err) {
