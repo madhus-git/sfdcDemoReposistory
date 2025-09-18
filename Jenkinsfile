@@ -6,32 +6,32 @@ def preCheckCredentials() {
         sh """
             echo "=== Pre-Check: Validating Salesforce Credentials ==="
             if [ -z "$CONNECTED_APP_CONSUMER_KEY" ]; then
-                echo "❌ Missing CONNECTED_APP_CONSUMER_KEY"; exit 1
+                echo "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1
             fi
             if [ -z "$SFDC_USERNAME" ]; then
-                echo "❌ Missing SFDC_USERNAME"; exit 1
+                echo "Missing SFDC_USERNAME"; exit 1
             fi
             if [ ! -f "$JWT_KEY_FILE" ]; then
-                echo "❌ Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
+                echo "Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
             fi
-            echo "✅ All credentials found!"
+            echo "All credentials found!"
         """
     } else {
         bat """
             echo === Pre-Check: Validating Salesforce Credentials ===
             if "%CONNECTED_APP_CONSUMER_KEY%"=="" (
-                echo ❌ Missing CONNECTED_APP_CONSUMER_KEY
+                echo Missing CONNECTED_APP_CONSUMER_KEY
                 exit /b 1
             )
             if "%SFDC_USERNAME%"=="" (
-                echo ❌ Missing SFDC_USERNAME
+                echo Missing SFDC_USERNAME
                 exit /b 1
             )
             if not exist "%JWT_KEY_FILE%" (
-                echo ❌ Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
+                echo Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
                 exit /b 1
             )
-            echo ✅ All credentials found!
+            echo All credentials found!
         """
     }
 }
@@ -68,19 +68,42 @@ def authenticateOrg() {
     }
 }
 
-def deployToOrg() {
+// ==============================
+// Fixed Deployment Functions
+// ==============================
+def validatePreDeployment() {
     if (isUnix()) {
-        sh "sf project deploy start --target-org $ORG_ALIAS --wait 10"
+        sh """
+            sf project deploy validate \
+                --target-org $ORG_ALIAS \
+                --source-dir force-app \
+                --wait 10
+        """
     } else {
-        bat "sf project deploy start --target-org %ORG_ALIAS% --wait 10"
+        bat """
+            sf project deploy validate ^
+                --target-org %ORG_ALIAS% ^
+                --source-dir force-app ^
+                --wait 10
+        """
     }
 }
 
-def validatePreDeployment() {
+def deployToOrg() {
     if (isUnix()) {
-        sh "sf project deploy validate --target-org $ORG_ALIAS --wait 10"
+        sh """
+            sf project deploy start \
+                --target-org $ORG_ALIAS \
+                --source-dir force-app \
+                --wait 10
+        """
     } else {
-        bat "sf project deploy validate --target-org %ORG_ALIAS% --wait 10"
+        bat """
+            sf project deploy start ^
+                --target-org %ORG_ALIAS% ^
+                --source-dir force-app ^
+                --wait 10
+        """
     }
 }
 
