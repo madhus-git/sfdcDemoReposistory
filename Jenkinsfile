@@ -136,12 +136,14 @@ node {
         withCredentials([
             string(credentialsId: 'sfdc-consumer-key', variable: 'CONNECTED_APP_CONSUMER_KEY'),
             string(credentialsId: 'sfdc-username', variable: 'SFDC_USERNAME'),
-            file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE')
+            file(credentialsId: 'sfdc-jwt-key', variable: 'JWT_KEY_FILE'),
+            usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')
         ]) {
 
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
-                "ORG_ALIAS=projectdemosfdc"
+                "ORG_ALIAS=projectdemosfdc",
+                "NEXUS_URL=http://localhost:8081/repository/StaticCodeAnalysisReports"  // change repo URL
             ]) {
 
                 stage('Clean Workspace') {
@@ -238,6 +240,20 @@ node {
 
                 stage('Apex Test Execution') {
                     apexTestExecution()
+                }
+
+                stage('Upload Reports to Nexus') {
+                    echo "Uploading static analysis report to Nexus..."
+
+                    if (isUnix()) {
+                        sh """
+                            curl -v -u $NEXUS_USER:$NEXUS_PASS --upload-file html-report/CodeAnalyzerReport.html $NEXUS_URL/CodeAnalyzerReport-${BUILD_NUMBER}.html
+                        """
+                    } else {
+                        bat """
+                            curl -v -u %NEXUS_USER%:%NEXUS_PASS% --upload-file html-report\\CodeAnalyzerReport.html %NEXUS_URL%/CodeAnalyzerReport-%BUILD_NUMBER%.html
+                        """
+                    }
                 }
 
                 stage('Post-Deployment Verification') {
