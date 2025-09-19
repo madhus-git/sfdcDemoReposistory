@@ -19,7 +19,9 @@ public class sampleApexClass {
                 FROM Contact
                 WHERE AccountId IN :accIds
             ]) {
-                accIdToContacts.putIfAbsent(con.AccountId, new List<Contact>());
+                if (!accIdToContacts.containsKey(con.AccountId)) {
+                    accIdToContacts.put(con.AccountId, new List<Contact>());
+                }
                 accIdToContacts.get(con.AccountId).add(con);
             }
 
@@ -38,7 +40,7 @@ public class sampleApexClass {
             System.debug('Handled exception: ' + e.getMessage());
         }
 
-        // Allowed in BEFORE trigger
+        // ✅ Allowed in BEFORE trigger
         for (Account acc : accounts) {
             acc.Description = 'Updated by static analysis example';
         }
