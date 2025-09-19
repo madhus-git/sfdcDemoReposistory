@@ -175,51 +175,49 @@ node {
                 }
 
                 stage('Static Code Analysis & Publish') {
-    def htmlDir    = 'html-report'
-    def htmlReport = 'CodeAnalyzerReport.html'
+                    def htmlDir    = 'html-report'
+                    def htmlReport = 'CodeAnalyzerReport.html'
 
-    if (isUnix()) {
-        sh """
-            rm -rf ${htmlDir}
-            mkdir -p ${htmlDir}
+                    if (isUnix()) {
+                        sh """
+                            rm -rf ${htmlDir}
+                            mkdir -p ${htmlDir}
 
-            echo "=== Running Salesforce Code Analyzer ==="
-            # Run analyzer; if violations found, don't fail the pipeline
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo "Code Analyzer found issues, check report."
+                            echo "=== Running Salesforce Code Analyzer ==="
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo "Code Analyzer found issues, check report."
 
-            # Check if report was generated
-            if [ ! -f ${htmlDir}/${htmlReport} ]; then
-                echo "HTML report generation failed!"
-                exit 1
-            fi
+                            if [ ! -f ${htmlDir}/${htmlReport} ]; then
+                                echo "HTML report generation failed!"
+                                exit 1
+                            fi
+                        """
+                    } else {
+                        bat """
+                            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
+                            mkdir "${htmlDir}"
 
-            echo "HTML Report Generated Successfully:"
-            ls -R ${htmlDir}
-        """
-    } else {
-        bat """
-            if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
-            mkdir "${htmlDir}"
+                            echo === Running Salesforce Code Analyzer ===
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo Code Analyzer found issues, check report.
 
-            echo === Running Salesforce Code Analyzer ===
-            rem Run analyzer; if violations found, don't fail the pipeline
-            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo Code Analyzer found issues, check report.
+                            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
+                                echo HTML report generation failed!
+                                exit /b 1
+                            )
+                        """
+                    }
 
-            rem Check if report was generated
-            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
-                echo HTML report generation failed!
-                exit /b 1
-            )
+                    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-            echo HTML Report Generated Successfully:
-            dir /s "%WORKSPACE%\\${htmlDir}"
-        """
-    }
-
-    archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
-    def reportUrl = "${env.WORKSPACE}\\${htmlDir}\\${htmlReport}"
-    echo "View Report URL :: ${reportUrl}"
-}
+                    //Publish report in Jenkins UI
+                    publishHTML([
+                        reportDir: "${htmlDir}",
+                        reportFiles: htmlReport,
+                        reportName: "Salesforce Code Analyzer Report",
+                        keepAll: true,
+                        alwaysLinkToLastBuild: true,
+                        allowMissing: false
+                    ])
+                }
 
 
                 stage('Pre-Check Credentials') {
