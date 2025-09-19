@@ -3,13 +3,14 @@ public class sampleApexClass_Test {
 
     @testSetup
     static void setupData() {
-        // Create sample Accounts and Contacts
+        // Create sample Accounts
         List<Account> accList = new List<Account>();
         for (Integer i = 0; i < 3; i++) {
             accList.add(new Account(Name = 'Test Account ' + i));
         }
         insert accList;
 
+        // Create Contacts
         List<Contact> conList = new List<Contact>();
         for (Account acc : accList) {
             conList.add(new Contact(
@@ -28,7 +29,7 @@ public class sampleApexClass_Test {
         sampleApexClass.processAccounts(accs);
         Test.stopTest();
 
-        // Assert Description field is updated in-memory
+        // After method call, in-memory accounts should have Description set
         for (Account acc : accs) {
             System.assertEquals('Updated by static analysis example', acc.Description);
         }
@@ -36,15 +37,14 @@ public class sampleApexClass_Test {
 
     @isTest
     static void testTriggerExecution() {
-        // Inserting a new Account should fire the trigger
         Account acc = new Account(Name = 'Trigger Test');
         Test.startTest();
         insert acc;
         Test.stopTest();
 
-        // Validate trigger called processAccounts by checking debug logs or updated data
-        Account insertedAcc = [SELECT Id, Name FROM Account WHERE Id = :acc.Id LIMIT 1];
-        System.assertNotEquals(null, insertedAcc.Id);
+        // Verify Description is set by before trigger
+        Account insertedAcc = [SELECT Description FROM Account WHERE Id = :acc.Id LIMIT 1];
+        System.assertEquals('Updated by static analysis example', insertedAcc.Description);
     }
 
     @isTest
@@ -55,7 +55,6 @@ public class sampleApexClass_Test {
         obj.complexMethod('Param', 5, true, 10.5, Date.today());
         Test.stopTest();
 
-        // No exception expected
         System.assert(true, 'complexMethod executed successfully');
     }
 
@@ -71,5 +70,20 @@ public class sampleApexClass_Test {
 
         String result3 = obj.getGreeting('');
         System.assertEquals('Hello, Guest!', result3);
+    }
+
+    @isTest
+    static void testProcessAccountsWithEmptyAndNull() {
+        // Null input
+        Test.startTest();
+        sampleApexClass.processAccounts(null);
+        Test.stopTest();
+
+        // Empty list input
+        Test.startTest();
+        sampleApexClass.processAccounts(new List<Account>());
+        Test.stopTest();
+
+        System.assert(true, 'Handled null and empty inputs without error');
     }
 }

@@ -5,29 +5,30 @@ public class sampleApexClass {
             return;
         }
 
-        // Collect account Ids
+        // Collect Account Ids (only for existing records)
         Set<Id> accIds = new Set<Id>();
         for (Account acc : accounts) {
-            accIds.add(acc.Id);
+            if (acc.Id != null) accIds.add(acc.Id);
         }
 
-        // Query all contacts at once
-        Map<Id, List<Contact>> accIdToContacts = new Map<Id, List<Contact>>();
-        for (Contact con : [
-            SELECT Id, Name, AccountId
-            FROM Contact
-            WHERE AccountId IN :accIds
-        ]) {
-            if (!accIdToContacts.containsKey(con.AccountId)) {
-                accIdToContacts.put(con.AccountId, new List<Contact>());
+        // Query all contacts at once (only for existing Accounts)
+        if (!accIds.isEmpty()) {
+            Map<Id, List<Contact>> accIdToContacts = new Map<Id, List<Contact>>();
+            for (Contact con : [
+                SELECT Id, Name, AccountId
+                FROM Contact
+                WHERE AccountId IN :accIds
+            ]) {
+                accIdToContacts.putIfAbsent(con.AccountId, new List<Contact>());
+                accIdToContacts.get(con.AccountId).add(con);
             }
-            accIdToContacts.get(con.AccountId).add(con);
-        }
 
-        // Debug counts
-        for (Account acc : accounts) {
-            Integer size = accIdToContacts.containsKey(acc.Id) ? accIdToContacts.get(acc.Id).size() : 0;
-            System.debug('Contacts for ' + acc.Name + ': ' + size);
+            for (Account acc : accounts) {
+                Integer size = accIdToContacts.containsKey(acc.Id)
+                    ? accIdToContacts.get(acc.Id).size()
+                    : 0;
+                System.debug('Contacts for ' + acc.Name + ': ' + size);
+            }
         }
 
         // Safe exception handling
@@ -37,11 +38,10 @@ public class sampleApexClass {
             System.debug('Handled exception: ' + e.getMessage());
         }
 
-        // Bulk update
+        // Allowed in BEFORE trigger
         for (Account acc : accounts) {
             acc.Description = 'Updated by static analysis example';
         }
-        update accounts;
     }
 
     public void complexMethod(String param1, Integer param2, Boolean param3, Decimal param4, Date param5) {
