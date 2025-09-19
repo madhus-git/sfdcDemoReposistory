@@ -242,7 +242,7 @@ node {
                     apexTestExecution()
                 }
 
-                stage('Upload Reports to Nexus') {
+                /*stage('Upload Reports to Nexus') {
                     echo "Uploading static analysis report to Nexus..."
 
                     if (isUnix()) {
@@ -254,7 +254,33 @@ node {
                             curl -v -u %NEXUS_USER%:%NEXUS_PASS% --upload-file html-report\\CodeAnalyzerReport.html %NEXUS_URL%/CodeAnalyzerReport-%BUILD_NUMBER%.html
                         """
                     }
-                }
+                }*/
+
+                stage('Upload Reports to Nexus') {
+    echo "Uploading static analysis report to Nexus..."
+
+    // Extract branch name (remove refs/heads/ prefix)
+    def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+    branchName = branchName.replaceAll(/^refs\/heads\//, "").replaceAll(/[^\w\-.]/, "_")
+
+    def nexusPath = "${env.JOB_NAME}/${branchName}/${env.BUILD_NUMBER}"
+
+    if (isUnix()) {
+        sh """
+            curl -v -u $NEXUS_USER:$NEXUS_PASS \
+                 --upload-file html-report/CodeAnalyzerReport.html \
+                 $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html
+        """
+    } else {
+        bat """
+            curl -v -u %NEXUS_USER%:%NEXUS_PASS% ^
+                 --upload-file html-report\\CodeAnalyzerReport.html ^
+                 %NEXUS_URL%/${nexusPath}/CodeAnalyzerReport.html
+        """
+    }
+
+    echo "Report uploaded to: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
+}
 
                 stage('Post-Deployment Verification') {
                     echo "Deployment & tests completed successfully for $ORG_ALIAS!"
