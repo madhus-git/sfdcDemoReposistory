@@ -1,5 +1,5 @@
 @isTest
-public class testSampleApexClass {
+public class sampleApexClass_Test {
 
     @testSetup
     static void setupData() {
