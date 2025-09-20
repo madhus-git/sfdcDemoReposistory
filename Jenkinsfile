@@ -18,6 +18,7 @@ def preCheckCredentials() {
         """
     } else {
         bat """
+            @echo off
             if "%CONNECTED_APP_CONSUMER_KEY%"=="" (
                 echo [ERROR] Missing CONNECTED_APP_CONSUMER_KEY
                 exit /b 1
@@ -48,20 +49,13 @@ def authenticateOrg() {
         """
     } else {
         bat """
-            setlocal
-            set "CLIENT_ID=${CONNECTED_APP_CONSUMER_KEY}"
-            set "JWT_FILE=${JWT_KEY_FILE}"
-            set "USERNAME=${SFDC_USERNAME}"
-            set "ALIAS=${ORG_ALIAS}"
-            set "INSTANCE=${SFDC_HOST}"
-
+            @echo off
             sf org login jwt ^
-                --client-id "%CLIENT_ID%" ^
-                --jwt-key-file "%JWT_FILE%" ^
-                --username "%USERNAME%" ^
-                --alias "%ALIAS%" ^
-                --instance-url "%INSTANCE%"
-            endlocal
+                --client-id "%CONNECTED_APP_CONSUMER_KEY%" ^
+                --jwt-key-file "%JWT_KEY_FILE%" ^
+                --username "%SFDC_USERNAME%" ^
+                --alias "%ORG_ALIAS%" ^
+                --instance-url "%SFDC_HOST%"
         """
     }
 }
@@ -71,7 +65,10 @@ def validatePreDeployment() {
     if (isUnix()) {
         sh "sf project deploy validate --target-org $ORG_ALIAS --source-dir force-app --wait 10"
     } else {
-        bat "sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10"
+        bat """
+            @echo off
+            sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10
+        """
     }
 }
 
@@ -80,7 +77,10 @@ def deployToOrg() {
     if (isUnix()) {
         sh "sf project deploy start --target-org $ORG_ALIAS --source-dir force-app --wait 10"
     } else {
-        bat "sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10"
+        bat """
+            @echo off
+            sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10
+        """
     }
 }
 
@@ -90,7 +90,10 @@ def apexTestExecution() {
         if (isUnix()) {
             sh "sf apex run test --target-org $ORG_ALIAS --result-format junit --output-dir test-results --wait 10"
         } else {
-            bat "sf apex run test --target-org %ORG_ALIAS% --result-format junit --output-dir test-results --wait 10"
+            bat """
+                @echo off
+                sf apex run test --target-org %ORG_ALIAS% --result-format junit --output-dir test-results --wait 10
+            """
         }
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
         echo "Apex tests completed successfully for Org: $ORG_ALIAS"
@@ -133,14 +136,15 @@ node {
                             sf plugins update @salesforce/sfdx-scanner
                         '''
                     } else {
-                        bat '''
+                        bat """
+                            @echo off
                             where sf >nul 2>nul
                             if %ERRORLEVEL% neq 0 (
                                 npm install --global @salesforce/cli@2.61.8
                             )
                             sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo Plugin already installed
                             sf plugins update @salesforce/sfdx-scanner
-                        '''
+                        """
                     }
                 }
 
@@ -159,6 +163,7 @@ node {
                         """
                     } else {
                         bat """
+                            @echo off
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo ⚠️ Code Analyzer found issues
@@ -201,6 +206,7 @@ node {
                                 """
                             } else {
                                 bat """
+                                    @echo off
                                     for /f %%i in ('curl -s -o nul -w "%%{http_code}" -u %NEXUS_USER%:%NEXUS_PASS% ^
                                         --upload-file html-report\\${htmlReport} ^
                                         %NEXUS_URL%/${nexusPath}/${htmlReport}') do set HTTP_CODE=%%i
