@@ -16,7 +16,7 @@ def preCheckCredentials() {
             if [ ! -f "$JWT_KEY_FILE" ]; then
                 echo "[ERROR] Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
             fi
-            echo "✅ Pre-check passed: All Salesforce credentials are available"
+            echo "Pre-check passed: All Salesforce credentials are available"
         """
     } else {
         bat """
@@ -34,7 +34,7 @@ def preCheckCredentials() {
                 echo [ERROR] Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
                 exit /b 1
             )
-            echo ✅ Pre-check passed: All Salesforce credentials are available
+            echo Pre-check passed: All Salesforce credentials are available
         """
     }
 }
@@ -113,7 +113,7 @@ def apexTestExecution() {
             """
         }
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
-        echo "✅ Apex tests completed successfully for Org: ${ORG_ALIAS}"
+        echo "Apex tests completed successfully for Org: ${ORG_ALIAS}"
     } catch (Exception e) {
         error "[ERROR] Apex Unit Tests failed. Check test-results in Jenkins."
     }
@@ -124,7 +124,7 @@ def runSCA() {
     def htmlDir = 'html-report'
     def dateStamp = new Date().format("ddMMyy")
     def buildNumber = env.BUILD_NUMBER
-    // ✅ Added .html extension
+    // Added .html extension
     def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
 
     if (isUnix()) {
@@ -163,7 +163,7 @@ def uploadToNexus() {
     branchName = branchName.replaceAll(/^refs\\/heads\\//, "").replaceAll(/[^\w\-.]/, "_")
     def dateStamp = new Date().format("ddMMyy")
     def buildNumber = env.BUILD_NUMBER
-    // ✅ Using the same .html file name as SCA output
+    // Using the same .html file name as SCA output
     def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
     def nexusPath = "${projectName}/${branchName}/${buildNumber}"
 
@@ -242,13 +242,33 @@ node {
                     }
                 }
 
-                stage('Static Code Analysis') { runSCA() }
-                stage('Upload SCA Report to Nexus') { uploadToNexus() }
-                stage('Pre-Check Credentials') { preCheckCredentials() }
-                stage('Authenticate Org')      { authenticateOrg() }
-                stage('Pre-Deployment Validation') { validatePreDeployment() }
-                stage('Deploy to Org')         { deployToOrg() }
-                stage('Apex Test Execution')   { apexTestExecution() }
+                stage('Static Code Analysis') { 
+                    runSCA() 
+                }
+                
+                stage('Upload SCA Report') { 
+                    uploadToNexus() 
+                }
+                
+                stage('Pre-Check Credentials') { 
+                    preCheckCredentials() 
+                }
+                
+                stage('Authenticate Org') { 
+                    authenticateOrg() 
+                }
+
+                stage('Pre-Deployment Validation') { 
+                    validatePreDeployment() 
+                }
+                
+                stage('Deploy to Org') { 
+                    deployToOrg() 
+                }
+                
+                stage('Apex Test Execution') { 
+                    apexTestExecution() 
+                }
 
                 stage('Clean Workspace') { 
                     echo "Cleaning workspace..."
