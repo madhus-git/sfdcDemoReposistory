@@ -124,7 +124,8 @@ def runSCA() {
     def htmlDir = 'html-report'
     def dateStamp = new Date().format("ddMMyy")
     def buildNumber = env.BUILD_NUMBER
-    def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}"
+    // ✅ Added .html extension
+    def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
 
     if (isUnix()) {
         sh """
@@ -162,6 +163,7 @@ def uploadToNexus() {
     branchName = branchName.replaceAll(/^refs\\/heads\\//, "").replaceAll(/[^\w\-.]/, "_")
     def dateStamp = new Date().format("ddMMyy")
     def buildNumber = env.BUILD_NUMBER
+    // ✅ Using the same .html file name as SCA output
     def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
     def nexusPath = "${projectName}/${branchName}/${buildNumber}"
 
