@@ -36,7 +36,7 @@ def preCheckCredentials() {
 }
 
 def authenticateOrg() {
-    echo "Authenticating to Salesforce Org :: %ORG_ALIAS%"
+    echo "Authenticating to Salesforce Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
@@ -62,7 +62,7 @@ def authenticateOrg() {
 }
 
 def validatePreDeployment() {
-    echo "Validating pre-deployment to Org :: %ORG_ALIAS%"
+    echo "Validating pre-deployment to Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh """
             echo "Validating deployment to Org: $ORG_ALIAS..."
@@ -76,7 +76,7 @@ def validatePreDeployment() {
 }
 
 def deployToOrg() {
-    echo "Deploying to Org :: %ORG_ALIAS%"
+    echo "Deploying to Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh """
             echo "Deploying to Org: $ORG_ALIAS..."
@@ -185,7 +185,7 @@ node {
                     ])
                 }
 
-                stage('Upload SCA Report to Nexus') {
+                stage('Upload SCA Report') {
                     echo "Uploading SCA Report to repo"
                     script {
                         def projectName = "SF-CICD-POC"
