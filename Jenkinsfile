@@ -2,6 +2,7 @@
 // Utility Functions
 // ==============================
 def preCheckCredentials() {
+    echo "Pre-check SF Credentials"
     if (isUnix()) {
         sh """
             if [ -z "$CONNECTED_APP_CONSUMER_KEY" ]; then
@@ -13,7 +14,7 @@ def preCheckCredentials() {
             if [ ! -f "$JWT_KEY_FILE" ]; then
                 echo "[ERROR] Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
             fi
-            echo "✅ Pre-check passed: All Salesforce credentials are available"
+            echo "Pre-check passed: All Salesforce credentials are available"
         """
     } else {
         bat """
@@ -29,12 +30,13 @@ def preCheckCredentials() {
                 echo [ERROR] Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
                 exit /b 1
             )
-            echo ✅ Pre-check passed: All Salesforce credentials are available
+            echo Pre-check passed: All Salesforce credentials are available
         """
     }
 }
 
 def authenticateOrg() {
+    echo "Authenticating to Salesforce Org :: %ORG_ALIAS%"
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
@@ -44,23 +46,23 @@ def authenticateOrg() {
                 --username $SFDC_USERNAME \
                 --alias $ORG_ALIAS \
                 --instance-url $SFDC_HOST
-            echo "✅ Authentication completed for Org: $ORG_ALIAS"
+            echo "Authentication completed for Org: $ORG_ALIAS"
         """
     } else {
         bat """
-            echo Authenticating to Salesforce Org: %ORG_ALIAS%...
             sf org login jwt ^
                 --client-id %CONNECTED_APP_CONSUMER_KEY% ^
                 --jwt-key-file %JWT_KEY_FILE% ^
                 --username %SFDC_USERNAME% ^
                 --alias %ORG_ALIAS% ^
                 --instance-url %SFDC_HOST%
-            echo ✅ Authentication completed for Org: %ORG_ALIAS%
+            echo Authentication completed for Org: %ORG_ALIAS%
         """
     }
 }
 
 def validatePreDeployment() {
+    echo "Validating pre-deployment to Org :: %ORG_ALIAS%"
     if (isUnix()) {
         sh """
             echo "Validating deployment to Org: $ORG_ALIAS..."
@@ -68,13 +70,13 @@ def validatePreDeployment() {
         """
     } else {
         bat """
-            echo Validating deployment to Org: %ORG_ALIAS%...
             sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10
         """
     }
 }
 
 def deployToOrg() {
+    echo "Deploying to Org :: %ORG_ALIAS%"
     if (isUnix()) {
         sh """
             echo "Deploying to Org: $ORG_ALIAS..."
@@ -82,7 +84,6 @@ def deployToOrg() {
         """
     } else {
         bat """
-            echo Deploying to Org: %ORG_ALIAS%...
             sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10
         """
     }
@@ -90,6 +91,7 @@ def deployToOrg() {
 
 def apexTestExecution() {
     try {
+        echo "Running Apex Unit Tests in Org :: $ORG_ALIAS"
         if (isUnix()) {
             sh """
                 echo "Running Apex Unit Tests in Org: $ORG_ALIAS ..."
@@ -97,12 +99,11 @@ def apexTestExecution() {
             """
         } else {
             bat """
-                echo Running Apex Unit Tests in Org: %ORG_ALIAS% ...
                 sf apex run test --target-org %ORG_ALIAS% --result-format junit --output-dir test-results --wait 10
             """
         }
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
-        echo "✅ Apex tests completed successfully for Org: $ORG_ALIAS"
+        echo "Apex tests completed successfully for Org: $ORG_ALIAS"
     } catch (Exception e) {
         error "[ERROR] Apex Unit Tests failed. Please check test results in Jenkins."
     }
@@ -126,14 +127,13 @@ node {
                 "NEXUS_URL=http://localhost:8081/repository/StaticCodeAnalysisReports"
             ]) {
 
-                stage('Clean Workspace') {
-                    cleanWs()
-                    echo "✅ Workspace cleaned successfully!"
+                stage('Checkout Source') { 
+                    echo "Checkout Source code"
+                    checkout scm 
                 }
 
-                stage('Checkout Source') { checkout scm }
-
                 stage('Install Prerequisites') {
+                    echo "Install Prerequisites for CICD"
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -155,6 +155,7 @@ node {
                 }
 
                 stage('Static Code Analysis') {
+                    echo "Performing SCA for SF Code"
                     def htmlDir    = 'html-report'
                     def htmlReport = 'CodeAnalyzerReport.html'
 
@@ -184,7 +185,8 @@ node {
                     ])
                 }
 
-                stage('Upload Static Code Analysis Report to Nexus') {
+                stage('Upload SCA Report to Nexus') {
+                    echo "Uploading SCA Report to repo"
                     script {
                         def projectName = "SF-CICD-POC"
                         def branchName  = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
@@ -207,21 +209,40 @@ node {
                                     """
                                 }
                             }
-                            echo "✅ Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
+                            echo "Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
                         } catch (Exception e) {
                             error "[ERROR] Failed to upload report to Nexus: ${e}"
                         }
                     }
                 }
 
-                stage('Pre-Check Credentials') { preCheckCredentials() }
-                stage('Authenticate Org') { authenticateOrg() }
-                stage('Pre-Deployment Validation') { validatePreDeployment() }
-                stage('Deploy to Org') { deployToOrg() }
-                stage('Apex Test Execution') { apexTestExecution() }
+                stage('Pre-Check Credentials') { 
+                    preCheckCredentials() 
+                }
+
+                stage('Authenticate Org') { 
+                    authenticateOrg() 
+                }
+
+                stage('Pre-Deployment Validation') { 
+                    validatePreDeployment() 
+                }
+
+                stage('Deploy to Org') {
+                    deployToOrg() 
+                }
+
+                stage('Apex Test Execution') { 
+                    apexTestExecution() 
+                }
 
                 stage('Post-Deployment Verification') {
-                    echo "✅ Deployment & tests completed successfully for $ORG_ALIAS!"
+                    echo "Deployment & tests completed successfully for $ORG_ALIAS!"
+                }
+
+                stage('Clean Workspace') {
+                    cleanWs()
+                    echo "Workspace cleaned successfully!"
                 }
             }
         }
