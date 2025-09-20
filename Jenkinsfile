@@ -13,7 +13,7 @@ def preCheckCredentials() {
             if [ ! -f "$JWT_KEY_FILE" ]; then
                 echo "[ERROR] Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
             fi
-            echo "Pre-check passed: All Salesforce credentials are available"
+            echo "✅ Pre-check passed: All Salesforce credentials are available"
         """
     } else {
         bat """
@@ -29,7 +29,7 @@ def preCheckCredentials() {
                 echo [ERROR] Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
                 exit /b 1
             )
-            echo Pre-check passed: All Salesforce credentials are available
+            echo ✅ Pre-check passed: All Salesforce credentials are available
         """
     }
 }
@@ -38,17 +38,13 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            if sf org login jwt \
+            sf org login jwt \
                 --client-id $CONNECTED_APP_CONSUMER_KEY \
                 --jwt-key-file $JWT_KEY_FILE \
                 --username $SFDC_USERNAME \
                 --alias $ORG_ALIAS \
-                --instance-url $SFDC_HOST > /dev/null 2>&1; then
-                echo "Authentication successful for Org: $ORG_ALIAS"
-            else
-                echo "[ERROR] Authentication failed for Org: $ORG_ALIAS"
-                exit 1
-            fi
+                --instance-url $SFDC_HOST
+            echo "✅ Authentication completed for Org: $ORG_ALIAS"
         """
     } else {
         bat """
@@ -58,14 +54,8 @@ def authenticateOrg() {
                 --jwt-key-file %JWT_KEY_FILE% ^
                 --username %SFDC_USERNAME% ^
                 --alias %ORG_ALIAS% ^
-                --instance-url %SFDC_HOST% >nul 2>nul
-
-            if %ERRORLEVEL%==0 (
-                echo Authentication successful for Org: %ORG_ALIAS%
-            ) else (
-                echo [ERROR] Authentication failed for Org: %ORG_ALIAS%
-                exit /b 1
-            )
+                --instance-url %SFDC_HOST%
+            echo ✅ Authentication completed for Org: %ORG_ALIAS%
         """
     }
 }
@@ -74,27 +64,12 @@ def validatePreDeployment() {
     if (isUnix()) {
         sh """
             echo "Validating deployment to Org: $ORG_ALIAS..."
-            if sf project deploy validate \
-                --target-org $ORG_ALIAS \
-                --source-dir force-app \
-                --wait 10 > /dev/null 2>&1; then
-                echo "Pre-deployment validation successful for Org: $ORG_ALIAS"
-            else
-                echo "[ERROR] Pre-deployment validation failed for Org: $ORG_ALIAS"
-                exit 1
-            fi
+            sf project deploy validate --target-org $ORG_ALIAS --source-dir force-app --wait 10
         """
     } else {
         bat """
             echo Validating deployment to Org: %ORG_ALIAS%...
-            sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10 >nul 2>nul
-
-            if %ERRORLEVEL%==0 (
-                echo Pre-deployment validation successful for Org: %ORG_ALIAS%
-            ) else (
-                echo [ERROR] Pre-deployment validation failed for Org: %ORG_ALIAS%
-                exit /b 1
-            )
+            sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10
         """
     }
 }
@@ -103,27 +78,12 @@ def deployToOrg() {
     if (isUnix()) {
         sh """
             echo "Deploying to Org: $ORG_ALIAS..."
-            if sf project deploy start \
-                --target-org $ORG_ALIAS \
-                --source-dir force-app \
-                --wait 10 > /dev/null 2>&1; then
-                echo "Deployment successful for Org: $ORG_ALIAS"
-            else
-                echo "[ERROR] Deployment failed for Org: $ORG_ALIAS"
-                exit 1
-            fi
+            sf project deploy start --target-org $ORG_ALIAS --source-dir force-app --wait 10
         """
     } else {
         bat """
             echo Deploying to Org: %ORG_ALIAS%...
-            sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10 >nul 2>nul
-
-            if %ERRORLEVEL%==0 (
-                echo Deployment successful for Org: %ORG_ALIAS%
-            ) else (
-                echo [ERROR] Deployment failed for Org: %ORG_ALIAS%
-                exit /b 1
-            )
+            sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10
         """
     }
 }
@@ -142,7 +102,7 @@ def apexTestExecution() {
             """
         }
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
-        echo "Apex tests completed successfully for Org: $ORG_ALIAS"
+        echo "✅ Apex tests completed successfully for Org: $ORG_ALIAS"
     } catch (Exception e) {
         error "[ERROR] Apex Unit Tests failed. Please check test results in Jenkins."
     }
@@ -168,7 +128,7 @@ node {
 
                 stage('Clean Workspace') {
                     cleanWs()
-                    echo "Workspace cleaned successfully!"
+                    echo "✅ Workspace cleaned successfully!"
                 }
 
                 stage('Checkout Source') { checkout scm }
@@ -202,7 +162,7 @@ node {
                         sh """
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo "⚠️ Code Analyzer found issues, check report."
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo ⚠️ Code Analyzer found issues, check report.
                         """
                     } else {
                         bat """
@@ -247,7 +207,7 @@ node {
                                     """
                                 }
                             }
-                            echo "Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
+                            echo "✅ Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
                         } catch (Exception e) {
                             error "[ERROR] Failed to upload report to Nexus: ${e}"
                         }
@@ -261,7 +221,7 @@ node {
                 stage('Apex Test Execution') { apexTestExecution() }
 
                 stage('Post-Deployment Verification') {
-                    echo "Deployment & tests completed successfully for $ORG_ALIAS!"
+                    echo "✅ Deployment & tests completed successfully for $ORG_ALIAS!"
                 }
             }
         }
