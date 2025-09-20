@@ -1,3 +1,5 @@
+// Jenkinsfile — no suppressed commands
+
 // ==============================
 // Utility Functions
 // ==============================
@@ -40,6 +42,7 @@ def authenticateOrg() {
     echo "Authenticating to Salesforce Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh """
+            set -o pipefail
             sf org login jwt \
                 --client-id "$CONNECTED_APP_CONSUMER_KEY" \
                 --jwt-key-file "$JWT_KEY_FILE" \
@@ -98,7 +101,7 @@ def apexTestExecution() {
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
         echo "Apex tests completed successfully for Org: $ORG_ALIAS"
     } catch (Exception e) {
-        error "[ERROR] Apex Unit Tests failed. Please check test results in Jenkins."
+        error "[ERROR] Apex Unit Tests failed. Please check test results in Jenkins. ${e}"
     }
 }
 
@@ -129,10 +132,11 @@ node {
                     echo "Install Prerequisites for CICD"
                     if (isUnix()) {
                         sh '''
+                            # fail-fast behavior: don't swallow errors
                             if ! command -v sf >/dev/null 2>&1; then
                                 npm install --global @salesforce/cli@2.61.8
                             fi
-                            sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo "Plugin already installed"
+                            sf plugins install @salesforce/sfdx-scanner@3.16.0
                             sf plugins update @salesforce/sfdx-scanner
                         '''
                     } else {
@@ -142,7 +146,7 @@ node {
                             if %ERRORLEVEL% neq 0 (
                                 npm install --global @salesforce/cli@2.61.8
                             )
-                            sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo Plugin already installed
+                            sf plugins install @salesforce/sfdx-scanner@3.16.0
                             sf plugins update @salesforce/sfdx-scanner
                         """
                     }
@@ -159,14 +163,15 @@ node {
                         sh """
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo ⚠️ Code Analyzer found issues
+                            # do not suppress failures — let pipeline mark failed when analyzer returns non-zero
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport}
                         """
                     } else {
                         bat """
                             @echo off
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo ⚠️ Code Analyzer found issues
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}"
                         """
                     }
 
@@ -196,11 +201,11 @@ node {
                         try {
                             if (isUnix()) {
                                 sh """
-                                    HTTP_CODE=\$(curl -s -o /dev/null -w '%{http_code}' -u \$NEXUS_USER:\$NEXUS_PASS \
+                                    HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -u $NEXUS_USER:$NEXUS_PASS \
                                         --upload-file html-report/${htmlReport} \
-                                        \$NEXUS_URL/${nexusPath}/${htmlReport})
-                                    if [ "\$HTTP_CODE" != "201" ]; then
-                                        echo "[ERROR] Nexus upload failed with HTTP code: \$HTTP_CODE"
+                                        $NEXUS_URL/${nexusPath}/${htmlReport})
+                                    if [ "$HTTP_CODE" != "201" ]; then
+                                        echo "[ERROR] Nexus upload failed with HTTP code: $HTTP_CODE"
                                         exit 1
                                     fi
                                 """
@@ -223,14 +228,34 @@ node {
                     }
                 }
 
-                stage('Pre-Check Credentials') { preCheckCredentials() }
-                stage('Authenticate Org') { authenticateOrg() }
-                stage('Pre-Deployment Validation') { validatePreDeployment() }
-                stage('Deploy to Org') { deployToOrg() }
-                stage('Apex Test Execution') { apexTestExecution() }
-                stage('Post-Deployment Verification') { echo "Deployment & tests completed successfully for $ORG_ALIAS!" }
-                stage('Clean Workspace') { cleanWs(); echo "Workspace cleaned successfully!" }
+                stage('Pre-Check Credentials') { 
+                    preCheckCredentials() 
+                }
 
+                stage('Authenticate Org') { 
+                    authenticateOrg() 
+                }
+                
+                stage('Pre-Deployment Validation') { 
+                    validatePreDeployment() 
+                }
+
+                stage('Deploy to Org') { 
+                    deployToOrg() 
+                }
+                
+                stage('Apex Test Execution') { 
+                    apexTestExecution() 
+                }
+                
+                stage('Post-Deployment Verification') { 
+                    echo "Deployment & tests completed successfully for $ORG_ALIAS!" 
+                }
+                
+                stage('Clean Workspace') { 
+                    cleanWs()
+                    echo "Workspace cleaned successfully!" 
+                }
             }
         }
     } catch (err) {
