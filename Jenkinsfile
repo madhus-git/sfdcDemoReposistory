@@ -4,34 +4,32 @@
 def preCheckCredentials() {
     if (isUnix()) {
         sh """
-            echo "=== Pre-Check: Validating Salesforce Credentials ==="
             if [ -z "$CONNECTED_APP_CONSUMER_KEY" ]; then
-                echo "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1
+                echo "[ERROR] Missing CONNECTED_APP_CONSUMER_KEY"; exit 1
             fi
             if [ -z "$SFDC_USERNAME" ]; then
-                echo "Missing SFDC_USERNAME"; exit 1
+                echo "[ERROR] Missing SFDC_USERNAME"; exit 1
             fi
             if [ ! -f "$JWT_KEY_FILE" ]; then
-                echo "Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
+                echo "[ERROR] Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
             fi
-            echo "All credentials found!"
+            echo "Pre-check passed: All Salesforce credentials are available"
         """
     } else {
         bat """
-            echo === Pre-Check: Validating Salesforce Credentials ===
             if "%CONNECTED_APP_CONSUMER_KEY%"=="" (
-                echo Missing CONNECTED_APP_CONSUMER_KEY
+                echo [ERROR] Missing CONNECTED_APP_CONSUMER_KEY
                 exit /b 1
             )
             if "%SFDC_USERNAME%"=="" (
-                echo Missing SFDC_USERNAME
+                echo [ERROR] Missing SFDC_USERNAME
                 exit /b 1
             )
             if not exist "%JWT_KEY_FILE%" (
-                echo Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
+                echo [ERROR] Missing or invalid JWT_KEY_FILE: %JWT_KEY_FILE%
                 exit /b 1
             )
-            echo All credentials found!
+            echo Pre-check passed: All Salesforce credentials are available
         """
     }
 }
@@ -40,39 +38,93 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            sf org login jwt \
+            if sf org login jwt \
                 --client-id $CONNECTED_APP_CONSUMER_KEY \
                 --jwt-key-file $JWT_KEY_FILE \
                 --username $SFDC_USERNAME \
                 --alias $ORG_ALIAS \
-                --instance-url $SFDC_HOST
+                --instance-url $SFDC_HOST > /dev/null 2>&1; then
+                echo "Authentication successful for Org: $ORG_ALIAS"
+            else
+                echo "[ERROR] Authentication failed for Org: $ORG_ALIAS"
+                exit 1
+            fi
         """
     } else {
         bat """
-            echo Authenticating to Salesforce Org: %ORG_ALIAS%
+            echo Authenticating to Salesforce Org: %ORG_ALIAS%...
             sf org login jwt ^
                 --client-id %CONNECTED_APP_CONSUMER_KEY% ^
                 --jwt-key-file %JWT_KEY_FILE% ^
                 --username %SFDC_USERNAME% ^
                 --alias %ORG_ALIAS% ^
-                --instance-url %SFDC_HOST%
+                --instance-url %SFDC_HOST% >nul 2>nul
+
+            if %ERRORLEVEL%==0 (
+                echo Authentication successful for Org: %ORG_ALIAS%
+            ) else (
+                echo [ERROR] Authentication failed for Org: %ORG_ALIAS%
+                exit /b 1
+            )
         """
     }
 }
 
 def validatePreDeployment() {
     if (isUnix()) {
-        sh "sf project deploy validate --target-org $ORG_ALIAS --source-dir force-app --wait 10"
+        sh """
+            echo "Validating deployment to Org: $ORG_ALIAS..."
+            if sf project deploy validate \
+                --target-org $ORG_ALIAS \
+                --source-dir force-app \
+                --wait 10 > /dev/null 2>&1; then
+                echo "Pre-deployment validation successful for Org: $ORG_ALIAS"
+            else
+                echo "[ERROR] Pre-deployment validation failed for Org: $ORG_ALIAS"
+                exit 1
+            fi
+        """
     } else {
-        bat "sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10"
+        bat """
+            echo Validating deployment to Org: %ORG_ALIAS%...
+            sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10 >nul 2>nul
+
+            if %ERRORLEVEL%==0 (
+                echo Pre-deployment validation successful for Org: %ORG_ALIAS%
+            ) else (
+                echo [ERROR] Pre-deployment validation failed for Org: %ORG_ALIAS%
+                exit /b 1
+            )
+        """
     }
 }
 
 def deployToOrg() {
     if (isUnix()) {
-        sh "sf project deploy start --target-org $ORG_ALIAS --source-dir force-app --wait 10"
+        sh """
+            echo "Deploying to Org: $ORG_ALIAS..."
+            if sf project deploy start \
+                --target-org $ORG_ALIAS \
+                --source-dir force-app \
+                --wait 10 > /dev/null 2>&1; then
+                echo "Deployment successful for Org: $ORG_ALIAS"
+            else
+                echo "[ERROR] Deployment failed for Org: $ORG_ALIAS"
+                exit 1
+            fi
+        """
     } else {
-        bat "sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10"
+        bat """
+            echo Deploying to Org: %ORG_ALIAS%...
+            sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10 >nul 2>nul
+
+            if %ERRORLEVEL%==0 (
+                echo Deployment successful for Org: %ORG_ALIAS%
+            ) else (
+                echo [ERROR] Deployment failed for Org: %ORG_ALIAS%
+                exit /b 1
+            )
+        """
     }
 }
 
@@ -90,8 +142,9 @@ def apexTestExecution() {
             """
         }
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
+        echo "Apex tests completed successfully for Org: $ORG_ALIAS"
     } catch (Exception e) {
-        error "Apex Unit Tests failed. Please check test results in Jenkins."
+        error "[ERROR] Apex Unit Tests failed. Please check test results in Jenkins."
     }
 }
 
@@ -118,32 +171,30 @@ node {
                     echo "Workspace cleaned successfully!"
                 }
 
-                stage('Checkout Source') {
-                    checkout scm
-                }
+                stage('Checkout Source') { checkout scm }
 
                 stage('Install Prerequisites') {
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
-                                npm install --global @salesforce/cli
+                                npm install --global @salesforce/cli@2.61.8
                             fi
-                            sf plugins install @salesforce/sfdx-scanner || echo "Plugin already installed"
+                            sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo "Plugin already installed"
                             sf plugins update @salesforce/sfdx-scanner
                         '''
                     } else {
                         bat '''
                             where sf >nul 2>nul
                             if %ERRORLEVEL% neq 0 (
-                                npm install --global @salesforce/cli
+                                npm install --global @salesforce/cli@2.61.8
                             )
-                            sf plugins install @salesforce/sfdx-scanner || echo Plugin already installed
+                            sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo Plugin already installed
                             sf plugins update @salesforce/sfdx-scanner
                         '''
                     }
                 }
 
-                stage('Static Code Analysis & Publish') {
+                stage('Static Code Analysis') {
                     def htmlDir    = 'html-report'
                     def htmlReport = 'CodeAnalyzerReport.html'
 
@@ -151,13 +202,13 @@ node {
                         sh """
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo "Code Analyzer found issues, check report."
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo "⚠️ Code Analyzer found issues, check report."
                         """
                     } else {
                         bat """
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
-                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo Code Analyzer found issues, check report.
+                            sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo ⚠️ Code Analyzer found issues, check report.
                         """
                     }
 
@@ -175,52 +226,39 @@ node {
 
                 stage('Upload Static Code Analysis Report to Nexus') {
                     script {
-                        // Normalize branch name
-                        def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+                        def projectName = "SF-CICD-POC"
+                        def branchName  = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
                         branchName = branchName.replaceAll(/^refs\/heads\//, "").replaceAll(/[^\w\-.]/, "_")
+                        def nexusPath   = "${projectName}/${branchName}/${env.BUILD_NUMBER}"
 
-                        // Nexus storage path
-                        def nexusPath = "${env.JOB_NAME}/${branchName}/${env.BUILD_NUMBER}"
-
-                        echo "Uploading report to Nexus path: ${nexusPath}"
-
-                        if (isUnix()) {
-                            sh """
-                                curl -v -u $NEXUS_USER:$NEXUS_PASS \
-                                     --upload-file html-report/CodeAnalyzerReport.html \
-                                     $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html
-                            """
-                        } else {
-                            bat """
-                                curl -v -u %NEXUS_USER%:%NEXUS_PASS% ^
-                                     --upload-file html-report\\CodeAnalyzerReport.html ^
-                                     %NEXUS_URL%/${nexusPath}/CodeAnalyzerReport.html
-                            """
+                        try {
+                            withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
+                                if (isUnix()) {
+                                    sh """
+                                        curl -s -u \$NEXUS_USER:\$NEXUS_PASS \
+                                             --upload-file html-report/CodeAnalyzerReport.html \
+                                             \$NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html
+                                    """
+                                } else {
+                                    bat """
+                                        curl -s -u %NEXUS_USER%:%NEXUS_PASS% ^
+                                             --upload-file html-report\\CodeAnalyzerReport.html ^
+                                             %NEXUS_URL%/${nexusPath}/CodeAnalyzerReport.html
+                                    """
+                                }
+                            }
+                            echo "Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
+                        } catch (Exception e) {
+                            error "[ERROR] Failed to upload report to Nexus: ${e}"
                         }
-
-                        echo "Report available at: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
                     }
                 }
 
-                stage('Pre-Check Credentials') {
-                    preCheckCredentials()
-                }
-
-                stage('Authenticate Org') {
-                    authenticateOrg()
-                }
-
-                stage('Pre-Deployment Validation') {
-                    validatePreDeployment()
-                }
-
-                stage('Deploy to Org') {
-                    deployToOrg()
-                }
-
-                stage('Apex Test Execution') {
-                    apexTestExecution()
-                }
+                stage('Pre-Check Credentials') { preCheckCredentials() }
+                stage('Authenticate Org') { authenticateOrg() }
+                stage('Pre-Deployment Validation') { validatePreDeployment() }
+                stage('Deploy to Org') { deployToOrg() }
+                stage('Apex Test Execution') { apexTestExecution() }
 
                 stage('Post-Deployment Verification') {
                     echo "Deployment & tests completed successfully for $ORG_ALIAS!"
@@ -228,7 +266,7 @@ node {
             }
         }
     } catch (err) {
-        echo "Pipeline failed: ${err}"
+        echo "[ERROR] Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
         throw err
     }
