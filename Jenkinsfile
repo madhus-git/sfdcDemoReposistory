@@ -1,28 +1,18 @@
 // ==============================
 // Utility Functions
 // ==============================
-def colorEcho(message, type="INFO") {
-    if (type == "SUCCESS") {
-        echo "\u001B[32m[SUCCESS] ${message}\u001B[0m"
-    } else if (type == "ERROR") {
-        echo "\u001B[31m[ERROR] ${message}\u001B[0m"
-    } else {
-        echo "[INFO] ${message}"
-    }
-}
-
 def preCheckCredentials() {
-    colorEcho("Pre-check SF Credentials", "INFO")
+    echo "Pre-check SF Credentials"
     if (isUnix()) {
         sh """
             if [ -z "$CONNECTED_APP_CONSUMER_KEY" ]; then
-                echo '[ERROR] Missing CONNECTED_APP_CONSUMER_KEY'; exit 1
+                echo "[ERROR] Missing CONNECTED_APP_CONSUMER_KEY"; exit 1
             fi
             if [ -z "$SFDC_USERNAME" ]; then
-                echo '[ERROR] Missing SFDC_USERNAME'; exit 1
+                echo "[ERROR] Missing SFDC_USERNAME"; exit 1
             fi
             if [ ! -f "$JWT_KEY_FILE" ]; then
-                echo '[ERROR] Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE'; exit 1
+                echo "[ERROR] Missing or invalid JWT_KEY_FILE: $JWT_KEY_FILE"; exit 1
             fi
             echo "Pre-check passed: All Salesforce credentials are available"
         """
@@ -46,33 +36,30 @@ def preCheckCredentials() {
 }
 
 def authenticateOrg() {
-    colorEcho("Authenticating to Salesforce Org :: $ORG_ALIAS", "INFO")
-    
+    echo "Authenticating to Salesforce Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh """
             sf org login jwt \
-                --client-id "$CONNECTED_APP_CONSUMER_KEY" \
-                --jwt-key-file "$JWT_KEY_FILE" \
-                --username "$SFDC_USERNAME" \
-                --alias "$ORG_ALIAS" \
-                --instance-url "$SFDC_HOST"
+                --client-id $CONNECTED_APP_CONSUMER_KEY \
+                --jwt-key-file $JWT_KEY_FILE \
+                --username $SFDC_USERNAME \
+                --alias $ORG_ALIAS \
+                --instance-url $SFDC_HOST
         """
-        colorEcho("Authentication completed for Org: $ORG_ALIAS", "SUCCESS")
     } else {
         bat """
-            sf org login jwt ^
-                --client-id "%CONNECTED_APP_CONSUMER_KEY%" ^
-                --jwt-key-file "%JWT_KEY_FILE%" ^
-                --username "%SFDC_USERNAME%" ^
-                --alias "%ORG_ALIAS%" ^
-                --instance-url "%SFDC_HOST%"
+            sf org login jwt ^ 
+                --client-id %CONNECTED_APP_CONSUMER_KEY% ^
+                --jwt-key-file %JWT_KEY_FILE% ^
+                --username %SFDC_USERNAME% ^
+                --alias %ORG_ALIAS% ^
+                --instance-url %SFDC_HOST%
         """
-        colorEcho("Authentication completed for Org: %ORG_ALIAS%", "SUCCESS")
     }
 }
 
 def validatePreDeployment() {
-    colorEcho("Validating pre-deployment to Org :: $ORG_ALIAS", "INFO")
+    echo "Validating pre-deployment to Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh "sf project deploy validate --target-org $ORG_ALIAS --source-dir force-app --wait 10"
     } else {
@@ -81,7 +68,7 @@ def validatePreDeployment() {
 }
 
 def deployToOrg() {
-    colorEcho("Deploying to Org :: $ORG_ALIAS", "INFO")
+    echo "Deploying to Org :: $ORG_ALIAS"
     if (isUnix()) {
         sh "sf project deploy start --target-org $ORG_ALIAS --source-dir force-app --wait 10"
     } else {
@@ -91,14 +78,14 @@ def deployToOrg() {
 
 def apexTestExecution() {
     try {
-        colorEcho("Running Apex Unit Tests in Org :: $ORG_ALIAS", "INFO")
+        echo "Running Apex Unit Tests in Org :: $ORG_ALIAS"
         if (isUnix()) {
             sh "sf apex run test --target-org $ORG_ALIAS --result-format junit --output-dir test-results --wait 10"
         } else {
             bat "sf apex run test --target-org %ORG_ALIAS% --result-format junit --output-dir test-results --wait 10"
         }
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
-        colorEcho("Apex tests completed successfully for Org: $ORG_ALIAS", "SUCCESS")
+        echo "Apex tests completed successfully for Org: $ORG_ALIAS"
     } catch (Exception e) {
         error "[ERROR] Apex Unit Tests failed. Please check test results in Jenkins."
     }
@@ -123,12 +110,12 @@ node {
             ]) {
 
                 stage('Checkout Source') { 
-                    colorEcho("Checkout Source code", "INFO")
+                    echo "Checkout Source code"
                     checkout scm 
                 }
 
                 stage('Install Prerequisites') {
-                    colorEcho("Install Prerequisites for CICD", "INFO")
+                    echo "Install Prerequisites for CICD"
                     if (isUnix()) {
                         sh '''
                             if ! command -v sf >/dev/null 2>&1; then
@@ -150,7 +137,7 @@ node {
                 }
 
                 stage('Static Code Analysis') {
-                    colorEcho("Performing SCA for SF Code", "INFO")
+                    echo "Performing SCA for SF Code"
                     def htmlDir = 'html-report'
                     def dateStamp = new Date().format("ddMMyy")
                     def buildNumber = env.BUILD_NUMBER
@@ -183,7 +170,7 @@ node {
                 }
 
                 stage('Upload SCA Report') {
-                    colorEcho("Uploading SCA Report to Nexus", "INFO")
+                    echo "Uploading SCA Report to Nexus"
                     script {
                         def projectName = "SF-CICD-POC"
                         def branchName  = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
@@ -200,7 +187,7 @@ node {
                                         --upload-file html-report/${htmlReport} \
                                         \$NEXUS_URL/${nexusPath}/${htmlReport})
                                     if [ "\$HTTP_CODE" != "201" ]; then
-                                        echo '[ERROR] Nexus upload failed with HTTP code: \$HTTP_CODE'
+                                        echo "[ERROR] Nexus upload failed with HTTP code: \$HTTP_CODE"
                                         exit 1
                                     fi
                                 """
@@ -215,25 +202,46 @@ node {
                                     )
                                 """
                             }
-                            colorEcho("Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/${htmlReport}", "SUCCESS")
+                            echo "[SUCCESS] Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/${htmlReport}"
                         } catch (Exception e) {
                             error "[ERROR] Failed to upload report to Nexus: ${e}"
                         }
                     }
                 }
 
-                stage('Pre-Check Credentials') { preCheckCredentials() }
-                stage('Authenticate Org') { authenticateOrg() }
-                stage('Pre-Deployment Validation') { validatePreDeployment() }
-                stage('Deploy to Org') { deployToOrg() }
-                stage('Apex Test Execution') { apexTestExecution() }
-                stage('Post-Deployment Verification') { colorEcho("Deployment & tests completed successfully for $ORG_ALIAS!", "SUCCESS") }
-                stage('Clean Workspace') { cleanWs(); colorEcho("Workspace cleaned successfully!", "SUCCESS") }
+                stage('Pre-Check Credentials') { 
+                    preCheckCredentials() 
+                }
+
+                stage('Authenticate Org') { 
+                    authenticateOrg() 
+                }
+
+                stage('Pre-Deployment Validation') { 
+                    validatePreDeployment() 
+                }
+                
+                stage('Deploy to Org') { 
+                    deployToOrg() 
+                }
+                
+                stage('Apex Test Execution') { 
+                    apexTestExecution() 
+                }
+                
+                stage('Post-Deployment Verification') { 
+                    echo "Deployment & tests completed successfully for $ORG_ALIAS!" 
+                }
+                
+                stage('Clean Workspace') { 
+                    cleanWs()
+                    echo "Workspace cleaned successfully!" 
+                }
 
             }
         }
     } catch (err) {
-        colorEcho("Pipeline failed: ${err}", "ERROR")
+        echo "[ERROR] Pipeline failed: ${err}"
         currentBuild.result = 'FAILURE'
         throw err
     }
