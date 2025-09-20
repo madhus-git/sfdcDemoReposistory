@@ -40,20 +40,28 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             sf org login jwt \
-                --client-id $CONNECTED_APP_CONSUMER_KEY \
-                --jwt-key-file $JWT_KEY_FILE \
-                --username $SFDC_USERNAME \
-                --alias $ORG_ALIAS \
-                --instance-url $SFDC_HOST
+                --client-id "$CONNECTED_APP_CONSUMER_KEY" \
+                --jwt-key-file "$JWT_KEY_FILE" \
+                --username "$SFDC_USERNAME" \
+                --alias "$ORG_ALIAS" \
+                --instance-url "$SFDC_HOST"
         """
     } else {
         bat """
-            sf org login jwt ^ 
-                --client-id %CONNECTED_APP_CONSUMER_KEY% ^
-                --jwt-key-file %JWT_KEY_FILE% ^
-                --username %SFDC_USERNAME% ^
-                --alias %ORG_ALIAS% ^
-                --instance-url %SFDC_HOST%
+            setlocal
+            set "CLIENT_ID=${CONNECTED_APP_CONSUMER_KEY}"
+            set "JWT_FILE=${JWT_KEY_FILE}"
+            set "USERNAME=${SFDC_USERNAME}"
+            set "ALIAS=${ORG_ALIAS}"
+            set "INSTANCE=${SFDC_HOST}"
+
+            sf org login jwt ^
+                --client-id "%CLIENT_ID%" ^
+                --jwt-key-file "%JWT_FILE%" ^
+                --username "%USERNAME%" ^
+                --alias "%ALIAS%" ^
+                --instance-url "%INSTANCE%"
+            endlocal
         """
     }
 }
@@ -202,41 +210,20 @@ node {
                                     )
                                 """
                             }
-                            echo "[SUCCESS] Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/${htmlReport}"
+                            echo "Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/${htmlReport}"
                         } catch (Exception e) {
                             error "[ERROR] Failed to upload report to Nexus: ${e}"
                         }
                     }
                 }
 
-                stage('Pre-Check Credentials') { 
-                    preCheckCredentials() 
-                }
-
-                stage('Authenticate Org') { 
-                    authenticateOrg() 
-                }
-
-                stage('Pre-Deployment Validation') { 
-                    validatePreDeployment() 
-                }
-                
-                stage('Deploy to Org') { 
-                    deployToOrg() 
-                }
-                
-                stage('Apex Test Execution') { 
-                    apexTestExecution() 
-                }
-                
-                stage('Post-Deployment Verification') { 
-                    echo "Deployment & tests completed successfully for $ORG_ALIAS!" 
-                }
-                
-                stage('Clean Workspace') { 
-                    cleanWs()
-                    echo "Workspace cleaned successfully!" 
-                }
+                stage('Pre-Check Credentials') { preCheckCredentials() }
+                stage('Authenticate Org') { authenticateOrg() }
+                stage('Pre-Deployment Validation') { validatePreDeployment() }
+                stage('Deploy to Org') { deployToOrg() }
+                stage('Apex Test Execution') { apexTestExecution() }
+                stage('Post-Deployment Verification') { echo "Deployment & tests completed successfully for $ORG_ALIAS!" }
+                stage('Clean Workspace') { cleanWs(); echo "Workspace cleaned successfully!" }
 
             }
         }
