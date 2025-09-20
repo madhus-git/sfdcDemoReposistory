@@ -40,10 +40,6 @@ def authenticateOrg() {
     if (isUnix()) {
         sh """
             echo "Authenticating to Salesforce Org: $ORG_ALIAS..."
-            echo Using client-id: $CONNECTED_APP_CONSUMER_KEY
-            echo Using username: $SFDC_USERNAME
-            echo Using key file: $JWT_KEY_FILE
-
             sf org login jwt \
                 --client-id $CONNECTED_APP_CONSUMER_KEY \
                 --jwt-key-file $JWT_KEY_FILE \
@@ -54,10 +50,6 @@ def authenticateOrg() {
     } else {
         bat """
             echo Authenticating to Salesforce Org: %ORG_ALIAS%
-            echo Using client-id: %CONNECTED_APP_CONSUMER_KEY%
-            echo Using username: %SFDC_USERNAME%
-            echo Using key file: %JWT_KEY_FILE%
-
             sf org login jwt ^
                 --client-id %CONNECTED_APP_CONSUMER_KEY% ^
                 --jwt-key-file %JWT_KEY_FILE% ^
@@ -68,42 +60,19 @@ def authenticateOrg() {
     }
 }
 
-// ==============================
-// Fixed Deployment Functions
-// ==============================
 def validatePreDeployment() {
     if (isUnix()) {
-        sh """
-            sf project deploy validate \
-                --target-org $ORG_ALIAS \
-                --source-dir force-app \
-                --wait 10
-        """
+        sh "sf project deploy validate --target-org $ORG_ALIAS --source-dir force-app --wait 10"
     } else {
-        bat """
-            sf project deploy validate ^
-                --target-org %ORG_ALIAS% ^
-                --source-dir force-app ^
-                --wait 10
-        """
+        bat "sf project deploy validate --target-org %ORG_ALIAS% --source-dir force-app --wait 10"
     }
 }
 
 def deployToOrg() {
     if (isUnix()) {
-        sh """
-            sf project deploy start \
-                --target-org $ORG_ALIAS \
-                --source-dir force-app \
-                --wait 10
-        """
+        sh "sf project deploy start --target-org $ORG_ALIAS --source-dir force-app --wait 10"
     } else {
-        bat """
-            sf project deploy start ^
-                --target-org %ORG_ALIAS% ^
-                --source-dir force-app ^
-                --wait 10
-        """
+        bat "sf project deploy start --target-org %ORG_ALIAS% --source-dir force-app --wait 10"
     }
 }
 
@@ -120,9 +89,7 @@ def apexTestExecution() {
                 sf apex run test --target-org %ORG_ALIAS% --result-format junit --output-dir test-results --wait 10
             """
         }
-
         junit allowEmptyResults: false, testResults: 'test-results/**/*.xml'
-
     } catch (Exception e) {
         error "Apex Unit Tests failed. Please check test results in Jenkins."
     }
@@ -143,7 +110,7 @@ node {
             withEnv([
                 "SFDC_HOST=https://login.salesforce.com",
                 "ORG_ALIAS=projectdemosfdc",
-                "NEXUS_URL=http://localhost:8081/repository/StaticCodeAnalysisReports"  // change repo URL
+                "NEXUS_URL=http://localhost:8081/repository/StaticCodeAnalysisReports"
             ]) {
 
                 stage('Clean Workspace') {
@@ -184,33 +151,18 @@ node {
                         sh """
                             rm -rf ${htmlDir}
                             mkdir -p ${htmlDir}
-
-                            echo "=== Running Salesforce Code Analyzer ==="
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file ${htmlDir}/${htmlReport} || echo "Code Analyzer found issues, check report."
-
-                            if [ ! -f ${htmlDir}/${htmlReport} ]; then
-                                echo "HTML report generation failed!"
-                                exit 1
-                            fi
                         """
                     } else {
                         bat """
                             if exist "${htmlDir}" rmdir /s /q "${htmlDir}"
                             mkdir "${htmlDir}"
-
-                            echo === Running Salesforce Code Analyzer ===
                             sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "%WORKSPACE%\\${htmlDir}\\${htmlReport}" || echo Code Analyzer found issues, check report.
-
-                            if not exist "%WORKSPACE%\\${htmlDir}\\${htmlReport}" (
-                                echo HTML report generation failed!
-                                exit /b 1
-                            )
                         """
                     }
 
                     archiveArtifacts artifacts: "${htmlDir}/**", fingerprint: true
 
-                    //Publish report in Jenkins UI
                     publishHTML([
                         reportDir: "${htmlDir}",
                         reportFiles: htmlReport,
@@ -221,6 +173,34 @@ node {
                     ])
                 }
 
+                stage('Upload Static Code Analysis Report to Nexus') {
+                    script {
+                        // Normalize branch name
+                        def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
+                        branchName = branchName.replaceAll(/^refs\/heads\//, "").replaceAll(/[^\w\-.]/, "_")
+
+                        // Nexus storage path
+                        def nexusPath = "${env.JOB_NAME}/${branchName}/${env.BUILD_NUMBER}"
+
+                        echo "Uploading report to Nexus path: ${nexusPath}"
+
+                        if (isUnix()) {
+                            sh """
+                                curl -v -u $NEXUS_USER:$NEXUS_PASS \
+                                     --upload-file html-report/CodeAnalyzerReport.html \
+                                     $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html
+                            """
+                        } else {
+                            bat """
+                                curl -v -u %NEXUS_USER%:%NEXUS_PASS% ^
+                                     --upload-file html-report\\CodeAnalyzerReport.html ^
+                                     %NEXUS_URL%/${nexusPath}/CodeAnalyzerReport.html
+                            """
+                        }
+
+                        echo "Report available at: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
+                    }
+                }
 
                 stage('Pre-Check Credentials') {
                     preCheckCredentials()
@@ -241,46 +221,6 @@ node {
                 stage('Apex Test Execution') {
                     apexTestExecution()
                 }
-
-                /*stage('Upload Reports to Nexus') {
-                    echo "Uploading static analysis report to Nexus..."
-
-                    if (isUnix()) {
-                        sh """
-                            curl -v -u $NEXUS_USER:$NEXUS_PASS --upload-file html-report/CodeAnalyzerReport.html $NEXUS_URL/CodeAnalyzerReport-${BUILD_NUMBER}.html
-                        """
-                    } else {
-                        bat """
-                            curl -v -u %NEXUS_USER%:%NEXUS_PASS% --upload-file html-report\\CodeAnalyzerReport.html %NEXUS_URL%/CodeAnalyzerReport-%BUILD_NUMBER%.html
-                        """
-                    }
-                }*/
-
-                stage('Upload Reports to Nexus') {
-    echo "Uploading static analysis report to Nexus..."
-
-    // Extract branch name (remove refs/heads/ prefix)
-    def branchName = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
-    branchName = branchName.replaceAll(/^refs\/heads\//, "").replaceAll(/[^\w\-.]/, "_")
-
-    def nexusPath = "${env.JOB_NAME}/${branchName}/${env.BUILD_NUMBER}"
-
-    if (isUnix()) {
-        sh """
-            curl -v -u $NEXUS_USER:$NEXUS_PASS \
-                 --upload-file html-report/CodeAnalyzerReport.html \
-                 $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html
-        """
-    } else {
-        bat """
-            curl -v -u %NEXUS_USER%:%NEXUS_PASS% ^
-                 --upload-file html-report\\CodeAnalyzerReport.html ^
-                 %NEXUS_URL%/${nexusPath}/CodeAnalyzerReport.html
-        """
-    }
-
-    echo "Report uploaded to: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
-}
 
                 stage('Post-Deployment Verification') {
                     echo "Deployment & tests completed successfully for $ORG_ALIAS!"
