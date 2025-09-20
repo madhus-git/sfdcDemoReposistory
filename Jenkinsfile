@@ -157,7 +157,9 @@ node {
                 stage('Static Code Analysis') {
                     echo "Performing SCA for SF Code"
                     def htmlDir    = 'html-report'
-                    def htmlReport = 'CodeAnalyzerReport.html'
+                    def dateStamp = new Date().format("ddMMyy")
+                    def buildNumber = env.BUILD_NUMBER
+                    def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
 
                     if (isUnix()) {
                         sh """
@@ -191,25 +193,38 @@ node {
                         def projectName = "SF-CICD-POC"
                         def branchName  = env.BRANCH_NAME ?: env.GIT_BRANCH ?: "unknown"
                         branchName = branchName.replaceAll(/^refs\/heads\//, "").replaceAll(/[^\w\-.]/, "_")
+                        def dateStamp = new Date().format("ddMMyy")
+                        def buildNumber = env.BUILD_NUMBER
+                        def htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
                         def nexusPath   = "${projectName}/${branchName}/${env.BUILD_NUMBER}"
 
                         try {
                             withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'NEXUS_USER', passwordVariable: 'NEXUS_PASS')]) {
                                 if (isUnix()) {
                                     sh """
-                                        curl -s -u \$NEXUS_USER:\$NEXUS_PASS \
-                                             --upload-file html-report/CodeAnalyzerReport.html \
-                                             \$NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html
+                                        curl -s -o /dev/null -w '%{http_code}' -u \$NEXUS_USER:\$NEXUS_PASS \
+                                            --upload-file html-report/${htmlReport} \
+                                            \$NEXUS_URL/${nexusPath}/${htmlReport} > result.txt
+                                        set /p result=<result.txt
+                                        if [ "\$result" != "201" ]; then
+                                            echo "[ERROR] Nexus upload failed with HTTP code: \$result"
+                                            exit 1
+                                        fi
                                     """
                                 } else {
                                     bat """
-                                        curl -s -u %NEXUS_USER%:%NEXUS_PASS% ^
-                                             --upload-file html-report\\CodeAnalyzerReport.html ^
-                                             %NEXUS_URL%/${nexusPath}/CodeAnalyzerReport.html
+                                        curl -s -o nul -w "%%{http_code}" -u %NEXUS_USER%:%NEXUS_PASS% ^
+                                            --upload-file html-report\\${htmlReport} ^
+                                            %NEXUS_URL%/${nexusPath}/${htmlReport} > result.txt
+                                        set /p result=<result.txt
+                                        if not "%result%"=="201" (
+                                            echo [ERROR] Nexus upload failed with HTTP code: %result%
+                                            exit /b 1
+                                        )
                                     """
                                 }
                             }
-                            echo "Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/CodeAnalyzerReport.html"
+                            echo "[SUCCESS] :: Report uploaded to Nexus: $NEXUS_URL/${nexusPath}/${htmlReport}"
                         } catch (Exception e) {
                             error "[ERROR] Failed to upload report to Nexus: ${e}"
                         }
