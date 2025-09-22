@@ -1,42 +1,55 @@
 public class sampleApexClass {
 
-    // Unused private variable - PMD will flag this
-    private String unusedVariable = 'Hello'; 
-
     public static void processAccounts(List<Account> accounts) {
-        // SOQL query inside a loop - PMD will flag this as a performance issue
+        if (accounts == null || accounts.isEmpty()) {
+            return;
+        }
+
+        // Collect Account Ids (only for existing records)
+        Set<Id> accIds = new Set<Id>();
         for (Account acc : accounts) {
-            List<Contact> contacts = [SELECT Id, Name FROM Contact WHERE AccountId = :acc.Id];
-            System.debug('Contacts for ' + acc.Name + ': ' + contacts.size());
+            if (acc.Id != null) accIds.add(acc.Id);
         }
 
-        // Empty catch block - PMD will flag this as a potential issue
+        // Query all contacts at once (only for existing Accounts)
+        if (!accIds.isEmpty()) {
+            Map<Id, List<Contact>> accIdToContacts = new Map<Id, List<Contact>>();
+            for (Contact con : [
+                SELECT Id, Name, AccountId
+                FROM Contact
+                WHERE AccountId IN :accIds
+            ]) {
+                if (!accIdToContacts.containsKey(con.AccountId)) {
+                    accIdToContacts.put(con.AccountId, new List<Contact>());
+                }
+                accIdToContacts.get(con.AccountId).add(con);
+            }
+
+            for (Account acc : accounts) {
+                Integer size = accIdToContacts.containsKey(acc.Id)
+                    ? accIdToContacts.get(acc.Id).size()
+                    : 0;
+                System.debug('Contacts for ' + acc.Name + ': ' + size);
+            }
+        }
+
+        // Safe exception handling
         try {
-            // Some operation that might throw an exception
-            Integer result = 10 / 0; 
+            Integer result = 10 / 0;
         } catch (Exception e) {
-            // This catch block is empty and doesn't handle the exception
+            System.debug('Handled exception: ' + e.getMessage());
         }
 
-        // Hardcoded ID - PMD might flag this if it's not a known system ID
-        Id hardcodedId = '001xxxxxxxxxxxx'; 
-
-        // DML operation inside a loop - PMD will flag this
-        List<Account> accountsToUpdate = new List<Account>();
+        // ✅ Allowed in BEFORE trigger
         for (Account acc : accounts) {
             acc.Description = 'Updated by static analysis example';
-            accountsToUpdate.add(acc);
         }
-        // This should be outside the loop
-        // update accountsToUpdate; 
     }
 
-    // Method with too many parameters - PMD might flag this for complexity
     public void complexMethod(String param1, Integer param2, Boolean param3, Decimal param4, Date param5) {
         System.debug('Complex method called');
     }
 
-    // Method with low code coverage potential - requires a test class
     public String getGreeting(String name) {
         if (String.isBlank(name)) {
             return 'Hello, Guest!';
