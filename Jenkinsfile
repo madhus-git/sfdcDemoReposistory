@@ -191,7 +191,7 @@ def uploadToNexus() {
             )
         """
     }
-    echo "Report uploaded to Nexus: ${NEXUS_URL}/${nexusPath}/${htmlReport}"
+    echo "Click to view report :: ${NEXUS_URL}/${nexusPath}/${htmlReport}"
 }
 
 // ==============================
