@@ -250,19 +250,21 @@ node {
                     uploadToNexus() 
                 }
                 
-                stage('Pre-Check Credentials') { 
+                /*stage('Pre-Check Credentials') { 
                     preCheckCredentials() 
-                }
+                }*/
                 
                 stage('Authenticate Org') { 
+                    preCheckCredentials()
                     authenticateOrg() 
                 }
 
-                stage('Pre-Deployment Validation') { 
+                /*stage('Pre-Deployment Validation') { 
                     validatePreDeployment() 
-                }
+                }*/
                 
                 stage('Deploy to Org') { 
+                    validatePreDeployment()
                     deployToOrg() 
                 }
                 
