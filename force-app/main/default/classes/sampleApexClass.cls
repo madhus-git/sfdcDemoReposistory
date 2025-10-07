@@ -40,7 +40,7 @@ public class sampleApexClass {
             System.debug('Handled exception: ' + e.getMessage());
         }
 
-        // ✅ Allowed in BEFORE trigger
+        // Allowed in BEFORE trigger
         for (Account acc : accounts) {
             acc.Description = 'Updated by static analysis example';
         }
@@ -48,7 +48,7 @@ public class sampleApexClass {
 
     public void complexMethod(String param1, Integer param2, Boolean param3, Decimal param4, Date param5) {
         System.debug('Complex method called');
-        System.debug('test');
+        System.debug('demo test');
     }
 
     public String getGreeting(String name) {
