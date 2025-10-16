@@ -29,8 +29,8 @@ jobs:
             --jwt-key-file server.key \
             --client-id ${{ secrets.SF_CONSUMER_KEY }} \
             --instance-url ${{ secrets.SF_INSTANCE_URL }} \
-            --alias targetOrg
-          sf org display --target-org targetOrg
+            --alias projectdemosfdc
+          sf org display --target-org projectdemosfdc
 
       # 4️⃣ Identify Changed Files in Commit
       - name: Identify changed components
@@ -45,7 +45,7 @@ jobs:
         if: env.CHANGED_FILES != ''
         run: |
           echo "Deploying changed files..."
-          sf project deploy start --source-dir force-app/main/default --target-org targetOrg --ignore-warnings
+          sf project deploy start --source-dir force-app/main/default --target-org projectdemosfdc --ignore-warnings
           
       # 6️⃣ Post-Deployment Report
       - name: Post Deployment Summary
