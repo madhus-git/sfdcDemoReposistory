@@ -1,0 +1,53 @@
+name: Salesforce CI/CD Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - githubcicd
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Checkout Code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2️⃣ Install Salesforce CLI
+      - name: Install Salesforce CLI
+        run: |
+          npm install @salesforce/cli --global
+          sf --version
+
+      # 3️⃣ Authenticate to Salesforce (JWT Auth)
+      - name: Authenticate to Salesforce Org
+        run: |
+          echo "${{ secrets.SF_JWT_KEY }}" > server.key
+          sf org login jwt --username ${{ secrets.SF_USERNAME }} \
+            --jwt-key-file server.key \
+            --client-id ${{ secrets.SF_CONSUMER_KEY }} \
+            --instance-url ${{ secrets.SF_INSTANCE_URL }} \
+            --alias targetOrg
+          sf org display --target-org targetOrg
+
+      # 4️⃣ Identify Changed Files in Commit
+      - name: Identify changed components
+        id: changed
+        run: |
+          echo "CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app')" >> $GITHUB_ENV
+          echo "Changed files:"
+          git diff --name-only HEAD~1 HEAD
+
+      # 5️⃣ Deploy Changed Files to Target Org
+      - name: Deploy to Target Org
+        if: env.CHANGED_FILES != ''
+        run: |
+          echo "Deploying changed files..."
+          sf project deploy start --source-dir force-app/main/default --target-org targetOrg --ignore-warnings
+          
+      # 6️⃣ Post-Deployment Report
+      - name: Post Deployment Summary
+        run: |
+          echo "Deployment completed successfully!"
