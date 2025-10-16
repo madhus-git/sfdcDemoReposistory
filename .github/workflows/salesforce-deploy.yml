@@ -14,6 +14,8 @@ jobs:
       # 1️⃣ Checkout Code
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # Ensures HEAD~1 exists for git diff
 
       # 2️⃣ Install Salesforce CLI
       - name: Install Salesforce CLI
@@ -36,9 +38,13 @@ jobs:
       - name: Identify changed components
         id: changed
         run: |
-          echo "CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app')" >> $GITHUB_ENV
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)" >> $GITHUB_ENV
+          else
+            echo "CHANGED_FILES=$(git diff --name-only HEAD | grep 'force-app' || true)" >> $GITHUB_ENV
+          fi
           echo "Changed files:"
-          git diff --name-only HEAD~1 HEAD
+          git "$CHANGED_FILES"
 
       # 5️⃣ Deploy Changed Files to Target Org
       - name: Deploy to Target Org
@@ -49,5 +55,8 @@ jobs:
           
       # 6️⃣ Post-Deployment Report
       - name: Post Deployment Summary
+        if: always()
         run: |
           echo "Deployment completed successfully!"
+          echo "Files deployed:"
+          echo "$CHANGED_FILES"
