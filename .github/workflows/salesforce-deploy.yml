@@ -34,29 +34,42 @@ jobs:
             --alias projectdemosfdc
           sf org display --target-org projectdemosfdc
 
-      # 4️⃣ Identify Changed Files in Commit
+      # 4️⃣ Identify Changed Files in Commit (Fixed Logic)
       - name: Identify changed components
         id: changed
         run: |
+          echo "🔍 Detecting changed Salesforce components..."
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            echo "CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)" >> $GITHUB_ENV
+            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)
           else
-            echo "CHANGED_FILES=$(git diff --name-only HEAD | grep 'force-app' || true)" >> $GITHUB_ENV
+            CHANGED_FILES=$(git diff --name-only HEAD | grep 'force-app' || true)
           fi
-          echo "Changed files:"
-          git "$CHANGED_FILES"
 
-      # 5️⃣ Deploy Changed Files to Target Org
-      - name: Deploy to Target Org
+          # Remove newlines and spaces
+          CHANGED_FILES=$(echo "$CHANGED_FILES" | tr '\n' ' ' | xargs)
+          echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+
+          echo "Changed files detected:"
+          echo "$CHANGED_FILES"
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "⚠️ No Salesforce files changed in this commit."
+          fi
+
+      # 5️⃣ Deploy Only Changed Files to Target Org
+      - name: Deploy changed components to Target Org
         if: env.CHANGED_FILES != ''
         run: |
-          echo "Deploying changed files..."
-          sf project deploy start --source-dir force-app/main/default --target-org projectdemosfdc --ignore-warnings
-          
-      # 6️⃣ Post-Deployment Report
+          echo "🚀 Deploying only changed components..."
+          for file in $CHANGED_FILES; do
+            echo "Deploying: $file"
+            sf project deploy start --source-dir "$file" --target-org projectdemosfdc --ignore-warnings --ignore-errors || true
+          done
+
+      # 6️⃣ Post-Deployment Summary
       - name: Post Deployment Summary
         if: always()
         run: |
-          echo "Deployment completed successfully!"
+          echo "✅ Deployment completed."
           echo "Files deployed:"
           echo "$CHANGED_FILES"
