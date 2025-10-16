@@ -38,7 +38,7 @@ jobs:
       - name: Identify changed components
         id: changed
         run: |
-          echo "🔍 Detecting changed Salesforce components..."
+          echo "Detecting changed Salesforce components..."
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)
           else
@@ -53,14 +53,14 @@ jobs:
           echo "$CHANGED_FILES"
 
           if [ -z "$CHANGED_FILES" ]; then
-            echo "⚠️ No Salesforce files changed in this commit."
+            echo "No Salesforce files changed in this commit."
           fi
 
       # 5️⃣ Deploy Only Changed Files to Target Org
       - name: Deploy changed components to Target Org
         if: env.CHANGED_FILES != ''
         run: |
-          echo "🚀 Deploying only changed components..."
+          echo "Deploying only changed components..."
           for file in $CHANGED_FILES; do
             echo "Deploying: $file"
             sf project deploy start --source-dir "$file" --target-org projectdemosfdc --ignore-warnings --ignore-errors || true
@@ -70,6 +70,6 @@ jobs:
       - name: Post Deployment Summary
         if: always()
         run: |
-          echo "✅ Deployment completed."
+          echo "Deployment completed."
           echo "Files deployed:"
           echo "$CHANGED_FILES"
