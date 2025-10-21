@@ -88,16 +88,28 @@ jobs:
         run: |
           echo "Uploading SCA Report to Nexus..."
           BRANCH_NAME="${GITHUB_REF##*/}"
-          BRANCH_NAME=$(echo $BRANCH_NAME | tr '/' '_' | tr -cd '[:alnum:]_.-')
+          BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/' '_' | tr -cd '[:alnum:]_.-')
           NEXUS_PATH="${PROJECT_NAME}/${BRANCH_NAME}/${BUILD_NUMBER}"
-          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -u $NEXUS_USER:$NEXUS_PASS \
-            --upload-file ${HTML_DIR}/${HTML_REPORT} \
-            ${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT})
-          if [ "$HTTP_CODE" != "201" ]; then
+          REPORT_PATH="${HTML_DIR}/${HTML_REPORT}"
+          TARGET_URL="${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT}"
+
+          echo "Uploading report to: $TARGET_URL"
+          echo "Using Nexus user: $NEXUS_USER"
+          
+          HTTP_CODE=$(curl -s -w "%{http_code}" -o response.log \
+            -u "$NEXUS_USER:$NEXUS_PASS" \
+            --upload-file "$REPORT_PATH" \
+            "$TARGET_URL" || echo "000")
+
+          echo "Response code: $HTTP_CODE"
+          echo "--- Nexus Response ---"
+          cat response.log || true
+
+          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
             echo "[ERROR] Nexus upload failed with HTTP code: $HTTP_CODE"
             exit 1
           fi
-          echo "✅ Uploaded to Nexus: ${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT}"
+          echo "✅ Uploaded successfully to Nexus: $TARGET_URL"
 
       # 8️⃣ Deploy Only Changed Files
       - name: Deploy changed components to Target Org
