@@ -25,7 +25,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # Ensures HEAD~1 exists for git diff
+          fetch-depth: 2
 
       # 2️⃣ Install Salesforce CLI
       - name: Install Salesforce CLI
@@ -58,9 +58,6 @@ jobs:
           echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
           echo "Changed files detected:"
           echo "$CHANGED_FILES"
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No Salesforce files changed in this commit."
-          fi
 
       # 5️⃣ Static Code Analysis (SCA)
       - name: Run Static Code Analysis
@@ -82,9 +79,17 @@ jobs:
           name: Salesforce-Code-Analyzer-Report
           path: ${{ env.HTML_DIR }}/
 
-      # 7️⃣ Upload SCA Report to Nexus
+      # 7️⃣ Test Nexus Connectivity
+      - name: Test Nexus Connectivity
+        run: |
+          echo "Testing Nexus URL connectivity..."
+          echo "NEXUS_URL: $NEXUS_URL"
+          curl -v --connect-timeout 10 "$NEXUS_URL" || echo "❌ Nexus not reachable."
+
+      # 8️⃣ Upload SCA Report to Nexus (Safe & Graceful)
       - name: Upload SCA Report to Nexus
         if: always()
+        continue-on-error: true
         run: |
           echo "Uploading SCA Report to Nexus..."
           BRANCH_NAME="${GITHUB_REF##*/}"
@@ -93,25 +98,37 @@ jobs:
           REPORT_PATH="${HTML_DIR}/${HTML_REPORT}"
           TARGET_URL="${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT}"
 
-          echo "Uploading report to: $TARGET_URL"
-          echo "Using Nexus user: $NEXUS_USER"
-          
-          HTTP_CODE=$(curl -s -w "%{http_code}" -o response.log \
-            -u "$NEXUS_USER:$NEXUS_PASS" \
-            --upload-file "$REPORT_PATH" \
-            "$TARGET_URL" || echo "000")
+          echo "Report file: $REPORT_PATH"
+          echo "Target URL: $TARGET_URL"
 
-          echo "Response code: $HTTP_CODE"
-          echo "--- Nexus Response ---"
-          cat response.log || true
-
-          if [ "$HTTP_CODE" != "201" ] && [ "$HTTP_CODE" != "200" ]; then
-            echo "[ERROR] Nexus upload failed with HTTP code: $HTTP_CODE"
-            exit 1
+          # Ensure file exists
+          if [ ! -f "$REPORT_PATH" ]; then
+            echo "⚠️ Report not found: $REPORT_PATH"
+            exit 0
           fi
-          echo "✅ Uploaded successfully to Nexus: $TARGET_URL"
 
-      # 8️⃣ Deploy Only Changed Files
+          # Ensure response.log always exists
+          touch response.log
+
+          set +e
+          curl -v -u "$NEXUS_USER:$NEXUS_PASS" \
+            --upload-file "$REPORT_PATH" \
+            "$TARGET_URL" \
+            -o response.log -w "%{http_code}" > http_code.txt 2>&1
+          CODE=$(grep -Eo '[0-9]{3}$' http_code.txt || echo "000")
+          set -e
+
+          echo "--- Nexus Response Log ---"
+          cat response.log || true
+          echo "Response code: $CODE"
+
+          if [ "$CODE" != "201" ] && [ "$CODE" != "200" ]; then
+            echo "⚠️ Nexus upload failed (HTTP $CODE). Continuing pipeline..."
+          else
+            echo "✅ Uploaded successfully to Nexus: $TARGET_URL"
+          fi
+
+      # 9️⃣ Deploy Changed Components
       - name: Deploy changed components to Target Org
         if: env.CHANGED_FILES != ''
         run: |
@@ -125,8 +142,8 @@ jobs:
               --ignore-errors || true
           done
 
-      # 9️⃣ Apex Test Execution
-      - name: Run Apex Tests
+      # 🔟 Run Apex Tests
+      - name: Run Apex Unit Tests
         run: |
           echo "Running Apex Unit Tests..."
           mkdir -p test-results
@@ -136,14 +153,14 @@ jobs:
             --output-dir test-results \
             --wait 10 | tee test-results/apex.log
 
-      # 🔟 Publish Apex Test Results
+      # 1️⃣1️⃣ Upload Apex Test Results
       - name: Upload Apex Test Results
         uses: actions/upload-artifact@v4
         with:
           name: Apex-Test-Results
           path: test-results/
 
-      # 1️⃣1️⃣ Post Deployment Summary
+      # 1️⃣2️⃣ Post Deployment Summary
       - name: Post Deployment Summary
         if: always()
         run: |
