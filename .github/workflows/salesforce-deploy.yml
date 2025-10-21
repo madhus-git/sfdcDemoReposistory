@@ -10,6 +10,16 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      ORG_ALIAS: projectdemosfdc
+      HTML_DIR: html-report
+      PROJECT_NAME: SF-CICD-POC
+      BUILD_NUMBER: ${{ github.run_number }}
+      DATE_STAMP: ${{ github.run_id }}
+      NEXUS_URL: ${{ secrets.NEXUS_URL }}
+      NEXUS_USER: ${{ secrets.NEXUS_USER }}
+      NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
+
     steps:
       # 1️⃣ Checkout Code
       - name: Checkout Code
@@ -23,7 +33,7 @@ jobs:
           npm install @salesforce/cli --global
           sf --version
 
-      # 3️⃣ Authenticate to Salesforce (JWT Auth)
+      # 3️⃣ Authenticate to Org
       - name: Authenticate to Org
         run: |
           echo "${{ secrets.SF_JWT_KEY }}" > server.key
@@ -31,10 +41,10 @@ jobs:
             --jwt-key-file server.key \
             --client-id ${{ secrets.SF_CONSUMER_KEY }} \
             --instance-url ${{ secrets.SF_INSTANCE_URL }} \
-            --alias projectdemosfdc
-          sf org display --target-org projectdemosfdc
+            --alias $ORG_ALIAS
+          sf org display --target-org $ORG_ALIAS
 
-      # 4️⃣ Identify Changed Files in Commit (Fixed Logic)
+      # 4️⃣ Identify Changed Files
       - name: Identify changed components
         id: changed
         run: |
@@ -44,32 +54,87 @@ jobs:
           else
             CHANGED_FILES=$(git diff --name-only HEAD | grep 'force-app' || true)
           fi
-
-          # Remove newlines and spaces
           CHANGED_FILES=$(echo "$CHANGED_FILES" | tr '\n' ' ' | xargs)
           echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
-
           echo "Changed files detected:"
           echo "$CHANGED_FILES"
-
           if [ -z "$CHANGED_FILES" ]; then
             echo "No Salesforce files changed in this commit."
           fi
 
-      # 5️⃣ Deploy Only Changed Files to Target Org
+      # 5️⃣ Static Code Analysis (SCA)
+      - name: Run Static Code Analysis
+        run: |
+          echo "Running Salesforce Code Analyzer..."
+          rm -rf $HTML_DIR
+          mkdir -p $HTML_DIR
+          HTML_REPORT="CodeAnalyzerReport_${DATE_STAMP}_${BUILD_NUMBER}.html"
+          sf code-analyzer run \
+            --workspace force-app \
+            --rule-selector Recommended \
+            --output-file ${HTML_DIR}/${HTML_REPORT} | tee ${HTML_DIR}/sca.log
+          echo "HTML_REPORT=${HTML_REPORT}" >> $GITHUB_ENV
+
+      # 6️⃣ Upload SCA Report to GitHub Artifacts
+      - name: Upload SCA Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Salesforce-Code-Analyzer-Report
+          path: ${{ env.HTML_DIR }}/
+
+      # 7️⃣ Upload SCA Report to Nexus
+      - name: Upload SCA Report to Nexus
+        if: always()
+        run: |
+          echo "Uploading SCA Report to Nexus..."
+          BRANCH_NAME="${GITHUB_REF##*/}"
+          BRANCH_NAME=$(echo $BRANCH_NAME | tr '/' '_' | tr -cd '[:alnum:]_.-')
+          NEXUS_PATH="${PROJECT_NAME}/${BRANCH_NAME}/${BUILD_NUMBER}"
+          HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' -u $NEXUS_USER:$NEXUS_PASS \
+            --upload-file ${HTML_DIR}/${HTML_REPORT} \
+            ${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT})
+          if [ "$HTTP_CODE" != "201" ]; then
+            echo "[ERROR] Nexus upload failed with HTTP code: $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ Uploaded to Nexus: ${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT}"
+
+      # 8️⃣ Deploy Only Changed Files
       - name: Deploy changed components to Target Org
         if: env.CHANGED_FILES != ''
         run: |
-          echo "Deploying only changed components..."
+          echo "Deploying changed components..."
           for file in $CHANGED_FILES; do
             echo "Deploying: $file"
-            sf project deploy start --source-dir "$file" --target-org projectdemosfdc --ignore-warnings --ignore-errors || true
+            sf project deploy start \
+              --source-dir "$file" \
+              --target-org $ORG_ALIAS \
+              --ignore-warnings \
+              --ignore-errors || true
           done
 
-      # 6️⃣ Post-Deployment Summary
+      # 9️⃣ Apex Test Execution
+      - name: Run Apex Tests
+        run: |
+          echo "Running Apex Unit Tests..."
+          mkdir -p test-results
+          sf apex run test \
+            --target-org $ORG_ALIAS \
+            --result-format junit \
+            --output-dir test-results \
+            --wait 10 | tee test-results/apex.log
+
+      # 🔟 Publish Apex Test Results
+      - name: Upload Apex Test Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: Apex-Test-Results
+          path: test-results/
+
+      # 1️⃣1️⃣ Post Deployment Summary
       - name: Post Deployment Summary
         if: always()
         run: |
-          echo "Deployment completed."
+          echo "✅ Salesforce Deployment Completed Successfully"
           echo "Files deployed:"
           echo "$CHANGED_FILES"
