@@ -64,7 +64,14 @@ jobs:
               Write-Host "Plugin may already be installed or updated."
           }
 
-          sf plugins update @salesforce/sfdx-scanner
+          # Update plugins (no specific plugin argument)
+          Write-Host "Updating all Salesforce plugins..."
+          try{
+              sf plugins update
+          } catch {
+              Write-Host "Plugin update skipped or not required."
+          }
+          
           Write-Host "✅ Salesforce CLI & Scanner setup completed successfully."
 
       # ======================
