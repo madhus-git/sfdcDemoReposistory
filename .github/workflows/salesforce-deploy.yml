@@ -157,9 +157,9 @@ jobs:
       - name: Pre-Check Salesforce Credentials
         shell: powershell
         env:
-          CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SFDC_CONSUMER_KEY }}
-          SFDC_USERNAME: ${{ secrets.SFDC_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SFDC_JWT_KEY_FILE_PATH }}
+          CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
+          SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
+          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY }}
         run: |
           Write-Host "Validating Salesforce Credentials..."
           if (-not $env:CONNECTED_APP_CONSUMER_KEY) { Write-Error "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1 }
@@ -173,9 +173,9 @@ jobs:
       - name: Authenticate Salesforce Org
         shell: powershell
         env:
-          CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SFDC_CONSUMER_KEY }}
-          SFDC_USERNAME: ${{ secrets.SFDC_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SFDC_JWT_KEY_FILE_PATH }}
+          CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
+          SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
+          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY_FILE_PATH }}
         run: |
           Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
