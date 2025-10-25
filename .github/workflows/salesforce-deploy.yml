@@ -109,25 +109,37 @@ jobs:
           Write-Host "✅ Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. Write JWT Key File from Secret
+      # 7. Write & Validate JWT Key File
       # ======================
-      - name: Write JWT Key File from Secret
+      - name: Write and Validate JWT Key File
         shell: powershell
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY_CONTENT }}
         run: |
           $keyPath = "C:\actions-runner\_work\jwt.key"
           Write-Host "Creating JWT key file at $keyPath..."
-          Set-Content -Path $keyPath -Value $env:SF_JWT_KEY_CONTENT -Encoding ASCII
+
+          # Write key preserving formatting
+          $decoded = $env:SF_JWT_KEY_CONTENT -replace '\r', "`r" -replace '\n', "`n"
+          [IO.File]::WriteAllText($keyPath, $decoded)
+
           if (-not (Test-Path $keyPath)) {
               Write-Error "❌ JWT key file creation failed."
               exit 1
           }
+
+          # ✅ Validate content
+          $content = Get-Content -Path $keyPath -Raw
+          if ($content -notmatch "-----BEGIN RSA PRIVATE KEY-----") {
+              Write-Error "❌ Invalid JWT Key: Missing 'BEGIN RSA PRIVATE KEY' header. Check your secret format in GitHub."
+              exit 1
+          }
+
+          Write-Host "✅ JWT key file validated successfully."
           echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          Write-Host "✅ JWT key file created successfully."
 
       # ======================
-      # 8. Authenticate Salesforce Org (JWT)
+      # 8. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
@@ -144,7 +156,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify changed components
+      # 9. Identify Changed Components
       # ======================
       - name: Identify changed Salesforce components
         shell: powershell
@@ -169,7 +181,7 @@ jobs:
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy changed components (conditional)
+      # 10. Deploy Changed Components
       # ======================
       - name: Deploy changed Salesforce components
         if: env.CHANGED_DIR != 'none'
@@ -179,7 +191,7 @@ jobs:
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10
 
       # ======================
-      # 11. Run Apex Tests (conditional)
+      # 11. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
