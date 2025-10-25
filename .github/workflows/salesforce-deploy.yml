@@ -42,7 +42,7 @@ jobs:
           Write-Host "Installing Salesforce CLI and Scanner Plugin..."
           
           if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-              Write-Error "npm is not installed or not in PATH."
+              Write-Error "npm is not installed or not in PATH. Please install Node.js on this runner."
               exit 1
           }
 
@@ -58,8 +58,10 @@ jobs:
           }
 
           Write-Host "Installing or updating Salesforce Scanner plugin..."
-          try { sf plugins install @salesforce/sfdx-scanner@latest } catch { Write-Host "Plugin may already be installed." }
+          try { sf plugins install @salesforce/sfdx-scanner@latest } catch { Write-Host "Plugin already installed." }
           try { sf plugins update } catch { Write-Host "Plugin update skipped." }
+
+          Write-Host "Salesforce CLI & Scanner setup completed successfully."
 
       # ======================
       # 4. Static Code Analysis
@@ -89,12 +91,13 @@ jobs:
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
         run: |
           $projectName = "SF-CICD-POC"
-          $branchName  = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
+          $branchName = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
           $buildNumber = $env:GITHUB_RUN_NUMBER
           $htmlReport = "${{ steps.sca.outputs.report }}"
           $nexusPath = "$projectName/$branchName/$buildNumber"
           $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
           $filePath = "html-report\$htmlReport"
+
           $maxRetries = 3
           $delay = 5
           $attempt = 1
@@ -122,30 +125,42 @@ jobs:
           if (-not $success) { Write-Error "❌ Failed to upload report to Nexus after ${maxRetries} attempts."; exit 1 }
 
       # ======================
-      # 6. Pre-Check Salesforce Credentials
+      # 6. Prepare JWT Key File
+      # ======================
+      - name: Prepare JWT Key File
+        shell: powershell
+        env:
+          JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          $jwtFile = "$env:TEMP\sfdc_jwt_key.pem"
+          Write-Host "Writing JWT key to $jwtFile"
+          Set-Content -Path $jwtFile -Value $env:JWT_KEY_CONTENT -Encoding ascii
+          echo "JWT_KEY_FILE=$jwtFile" >> $env:GITHUB_ENV
+
+      # ======================
+      # 7. Pre-Check Salesforce Credentials
       # ======================
       - name: Pre-Check Salesforce Credentials
         shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY }}
         run: |
           Write-Host "Validating Salesforce Credentials..."
           if (-not $env:CONNECTED_APP_CONSUMER_KEY) { Write-Error "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1 }
           if (-not $env:SFDC_USERNAME) { Write-Error "Missing SFDC_USERNAME"; exit 1 }
-          if (-not $env:JWT_KEY_FILE) { Write-Error "Missing JWT_KEY_FILE"; exit 1 }
+          if (-not (Test-Path $env:JWT_KEY_FILE)) { Write-Error "Missing or invalid JWT_KEY_FILE"; exit 1 }
           Write-Host "✅ Pre-check passed: All Salesforce credentials available."
 
       # ======================
-      # 7. Authenticate Salesforce Org
+      # 8. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY }}
+          JWT_KEY_FILE: ${{ env.JWT_KEY_FILE }}
         run: |
           Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
@@ -156,7 +171,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 8. Validate Pre-Deployment
+      # 9. Validate Pre-Deployment
       # ======================
       - name: Validate Pre-Deployment
         shell: powershell
@@ -165,7 +180,7 @@ jobs:
           sf project deploy validate --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
 
       # ======================
-      # 9. Deploy to Salesforce Org
+      # 10. Deploy to Salesforce Org
       # ======================
       - name: Deploy to Salesforce Org
         shell: powershell
@@ -174,7 +189,7 @@ jobs:
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
 
       # ======================
-      # 10. Run Apex Tests
+      # 11. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         shell: powershell
@@ -190,7 +205,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 11. Cleanup Workspace
+      # 12. Cleanup Workspace
       # ======================
       - name: Cleanup Workspace
         shell: powershell
