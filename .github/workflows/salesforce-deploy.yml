@@ -50,16 +50,20 @@ jobs:
           # Install Salesforce CLI if missing
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
               Write-Host "Salesforce CLI not found. Installing..."
-              npm install --global @salesforce/cli@2.61.8
-              $env:Path += ";$($env:APPDATA)\npm"
+              npm install --global @salesforce/cli@latest
+              $npmGlobalPath = (npm root -g).Replace('node_modules', '')
+              Write-Host "Adding npm global path to PATH: $npmGlobalPath"
+              echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } else {
               Write-Host "Salesforce CLI already installed."
+              $npmGlobalPath = (npm root -g).Replace('node_modules', '')
+              echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
           # Install or update the SFDX Scanner plugin
           Write-Host "Installing or updating Salesforce Scanner plugin..."
           try {
-              sf plugins install @salesforce/sfdx-scanner@3.16.0
+              sf plugins install @salesforce/sfdx-scanner@latest
           } catch {
               Write-Host "Plugin may already be installed or updated."
           }
@@ -72,7 +76,7 @@ jobs:
               Write-Host "Plugin update skipped or not required."
           }
           
-          Write-Host "✅ Salesforce CLI & Scanner setup completed successfully."
+          Write-Host "Salesforce CLI & Scanner setup completed successfully."
 
       # ======================
       # 4. Static Code Analysis
