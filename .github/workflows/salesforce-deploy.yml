@@ -111,15 +111,47 @@ jobs:
           $buildNumber = $env:GITHUB_RUN_NUMBER
           $htmlReport = "${{ steps.sca.outputs.report }}"
           $nexusPath = "$projectName/$branchName/$buildNumber"
+          $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
 
           Write-Host "Uploading report to Nexus..."
-          $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
-          $response = curl -s -o $null -w "%{http_code}" -u "$env:NEXUS_USER`:$env:NEXUS_PASS" --upload-file "html-report\$htmlReport" $url
-          if ($response -ne "201") {
-              Write-Error "[ERROR] Nexus upload failed with HTTP code: $response"
-              exit 1
+          $maxRetries = 3
+          $delay = 5
+          $attempt = 1
+          $success = $false
+
+          while (-not $success -and $attempt -le $maxRetries) {
+              Write-Host "Attempt $attempt of $maxRetries: Uploading $htmlReport ..."
+              try {
+                  # Use the real cURL binary to avoid PowerShell alias issues
+                  $response = & curl.exe -s -o $null -w "%{http_code}" `
+                      -u "$env:NEXUS_USER`:$env:NEXUS_PASS" `
+                      --upload-file "html-report\$htmlReport" `
+                      $url
+                  if ($response -eq "201" -or $response -eq "200") {
+                      Write-Host "✅ Successfully uploaded report to Nexus at $url"
+                      $success = $true
+                  } else {
+                      Write-Warning "Upload failed with HTTP code: $response"
+                      if ($attempt -lt $maxRetries) {
+                          Write-Host "Retrying in $delay seconds..."
+                          Start-Sleep -Seconds $delay
+                          $delay *= 2  # exponential backoff
+                    }
+                  }
+              } catch {
+                  Write-Warning "Error during upload: $($_.Exception.Message)"
+                  if ($attempt -lt $maxRetries) {
+                      Write-Host "Retrying in $delay seconds..."
+                      Start-Sleep -Seconds $delay
+                      $delay *= 2
+                  }
+              }
+              $attempt++
           }
-          Write-Host "Report uploaded successfully! $url"
+          if (-not $success) {
+              Write-Error "Failed to upload report to Nexus after $maxRetries attempts."
+              exit 1
+          }                          
 
       # ======================
       # 6. Pre-Check Salesforce Credentials
