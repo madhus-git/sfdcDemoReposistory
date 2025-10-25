@@ -25,30 +25,17 @@ jobs:
         uses: actions/checkout@v4
 
       # ======================
-      # 2. Ensure Git is Installed
+      # 2. Verify Git Installation
       # ======================
-      - name: Verify or Install Git
+      - name: Verify Git Installation
         shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
-          $gitCmd = Get-Command git -ErrorAction SilentlyContinue
-          if (-not $gitCmd) {
-              Write-Host "Git not found. Downloading Git installer..."
-              $gitInstaller = "$env:TEMP\Git-2.42.0-64-bit.exe"
-              Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.42.0.windows.1/Git-2.42.0-64-bit.exe" -OutFile $gitInstaller
-              Write-Host "Installing Git silently..."
-              Start-Process -FilePath $gitInstaller -ArgumentList "/VERYSILENT", "/NORESTART", "/NOCANCEL" -Wait
-              Remove-Item $gitInstaller -Force
-              $gitPath = "C:\Program Files\Git\cmd"
-              if (Test-Path $gitPath) {
-                  Write-Host "Adding Git to PATH..."
-                  echo "PATH=$gitPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              } else {
-                  Write-Error "Git installation failed. Please verify runner permissions."
-                  exit 1
-              }
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+              Write-Error "Git is not installed or not in PATH. Install Git manually on this self-hosted runner."
+              exit 1
           } else {
-              Write-Host "✅ Git is already installed."
+              Write-Host "✅ Git is installed."
           }
 
       # ======================
@@ -85,7 +72,7 @@ jobs:
           try { sf plugins install @salesforce/sfdx-scanner@latest } catch { Write-Host "Plugin already installed." }
 
       # ======================
-      # 5. Static Code Analysis
+      # 5. Run Static Code Analysis
       # ======================
       - name: Run Salesforce Code Analyzer
         id: sca
@@ -157,7 +144,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify changed components
+      # 9. Identify changed Salesforce components
       # ======================
       - name: Identify changed Salesforce components
         shell: powershell
@@ -182,7 +169,7 @@ jobs:
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy changed components (conditional)
+      # 10. Deploy changed components
       # ======================
       - name: Deploy changed Salesforce components
         if: env.CHANGED_DIR != 'none'
@@ -210,7 +197,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 12. Cleanup
+      # 12. Cleanup Workspace
       # ======================
       - name: Cleanup Workspace
         shell: powershell
