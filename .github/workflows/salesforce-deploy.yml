@@ -35,19 +35,20 @@ jobs:
           Write-Host "Installing Salesforce CLI..."
           npm install --global @salesforce/cli@2.61.8
 
-          # Add npm global path to current session
-          $env:PATH += ";" + (npm config get prefix) + "\node_modules\@salesforce\cli\bin"
+          # Path to sf.cmd
+          $sfCmd = Join-Path ((npm config get prefix) + "\bin") "sf.cmd"
+          Write-Host "Using sf command: $sfCmd"
 
           Write-Host "Installing/updating SFDX Scanner plugin..."
           try {
-            sf plugins install @salesforce/sfdx-scanner@3.16.0 -f
+            & $sfCmd plugins install @salesforce/sfdx-scanner@3.16.0 -f
           } catch {
             Write-Host "Plugin already installed, updating..."
-            sf plugins update @salesforce/sfdx-scanner
+            & $sfCmd plugins update @salesforce/sfdx-scanner
           }
 
-          sf --version
-          sf plugins list
+          & $sfCmd --version
+          & $sfCmd plugins list
 
       # 3️⃣ Install Salesforce CLI + SFDX Scanner Plugin (Linux/macOS)
       - name: Install Salesforce CLI + SFDX Scanner Plugin (Linux/macOS)
@@ -74,3 +75,5 @@ jobs:
 
           sf --version
           sf plugins list
+
+      
