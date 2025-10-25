@@ -8,7 +8,10 @@ on:
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     env:
       ORG_ALIAS: projectdemosfdc
@@ -27,14 +30,40 @@ jobs:
         with:
           fetch-depth: 2
 
-      # 2️⃣ Install Salesforce CLI
-      - name: Install Salesforce CLI
+      # 2️⃣ Install Prerequisites (Cross-platform)
+      - name: Install Prerequisites (Salesforce CLI + Scanner Plugin)
+        shell: bash
         run: |
-          npm install @salesforce/cli --global
-          sf --version
+          echo "Installing Salesforce CLI and Scanner Plugin..."
+          echo "Running on: $(uname -s)"
+
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            echo "Detected Windows runner..."
+            powershell -Command "
+              Write-Host 'Installing Salesforce CLI and Scanner Plugin...'
+              if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+                npm install --global @salesforce/cli@2.61.8
+              }
+              sf plugins install @salesforce/sfdx-scanner@3.16.0 2>$null; if ($LASTEXITCODE -ne 0) { Write-Host 'Plugin already installed' }
+              sf plugins update @salesforce/sfdx-scanner
+              sf --version
+              sf plugins list
+            "
+          else
+            echo "Detected Linux runner..."
+            set -x
+            if ! command -v sf >/dev/null 2>&1; then
+              npm install --global @salesforce/cli@2.61.8
+            fi
+            sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo "Plugin already installed"
+            sf plugins update @salesforce/sfdx-scanner
+            sf --version
+            sf plugins list
+          fi
 
       # 3️⃣ Authenticate to Org
       - name: Authenticate to Org
+        shell: bash
         run: |
           echo "${{ secrets.SF_JWT_KEY }}" > server.key
           sf org login jwt --username ${{ secrets.SF_USERNAME }} \
@@ -47,8 +76,9 @@ jobs:
       # 4️⃣ Identify Changed Files
       - name: Identify changed components
         id: changed
+        shell: bash
         run: |
-          echo "Detecting changed Salesforce components....."
+          echo "Detecting changed Salesforce components..."
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
             CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)
           else
@@ -61,6 +91,7 @@ jobs:
 
       # 5️⃣ Static Code Analysis (SCA)
       - name: Run Static Code Analysis
+        shell: bash
         run: |
           echo "Running Salesforce Code Analyzer..."
           rm -rf $HTML_DIR
@@ -81,6 +112,7 @@ jobs:
 
       # 7️⃣ Test Nexus Connectivity
       - name: Test Nexus Connectivity
+        shell: bash
         run: |
           echo "Testing Nexus URL connectivity..."
           echo "NEXUS_URL: $NEXUS_URL"
@@ -90,6 +122,7 @@ jobs:
       - name: Upload SCA Report to Nexus
         if: always()
         continue-on-error: true
+        shell: bash
         run: |
           echo "Uploading SCA Report to Nexus..."
           BRANCH_NAME="${GITHUB_REF##*/}"
@@ -101,13 +134,11 @@ jobs:
           echo "Report file: $REPORT_PATH"
           echo "Target URL: $TARGET_URL"
 
-          # Ensure file exists
           if [ ! -f "$REPORT_PATH" ]; then
             echo "⚠️ Report not found: $REPORT_PATH"
             exit 0
           fi
 
-          # Ensure response.log always exists
           touch response.log
 
           set +e
@@ -131,6 +162,7 @@ jobs:
       # 9️⃣ Deploy Changed Components
       - name: Deploy changed components to Target Org
         if: env.CHANGED_FILES != ''
+        shell: bash
         run: |
           echo "Deploying changed components..."
           for file in $CHANGED_FILES; do
@@ -144,6 +176,7 @@ jobs:
 
       # 🔟 Run Apex Tests
       - name: Run Apex Unit Tests
+        shell: bash
         run: |
           echo "Running Apex Unit Tests..."
           mkdir -p test-results
@@ -163,6 +196,7 @@ jobs:
       # 1️⃣2️⃣ Post Deployment Summary
       - name: Post Deployment Summary
         if: always()
+        shell: bash
         run: |
           echo "✅ Salesforce Deployment Completed Successfully"
           echo "Files deployed:"
