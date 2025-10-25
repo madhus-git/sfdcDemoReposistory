@@ -8,11 +8,8 @@ on:
 
 jobs:
   deploy:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, self-hosted]
-
+    runs-on: self-hosted
+    
     env:
       ORG_ALIAS: projectdemosfdc
       HTML_DIR: html-report
