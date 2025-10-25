@@ -21,7 +21,7 @@ jobs:
       NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
 
     steps:
-      # 1️⃣ Checkout Code (cross-platform, works for Windows too)
+      # 1️⃣ Checkout Code (cross-platform, works for Windows too )
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
