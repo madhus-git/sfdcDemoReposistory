@@ -32,14 +32,11 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          Write-Host "Installing Salesforce CLI and SFDX Scanner Plugin..."
-          
-          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-            Write-Host "Installing Salesforce CLI..."
-            npm install --global @salesforce/cli@2.61.8
-          } else {
-            Write-Host "Salesforce CLI already installed"
-          }
+          Write-Host "Installing Salesforce CLI..."
+          npm install --global @salesforce/cli@2.61.8
+
+          # Add npm global path to current session          
+          $env:PATH += ";" + (npm config get prefix) + "\node_modules\@salesforce\cli\bin"
 
           Write-Host "Installing/updating SFDX Scanner plugin..."
           try {
