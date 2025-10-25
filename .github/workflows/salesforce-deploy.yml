@@ -64,7 +64,7 @@ jobs:
           Write-Host "Salesforce CLI & Scanner setup completed successfully."
 
       # ======================
-      # 4. Static Code Analysis
+      # 4. Run Static Code Analysis
       # ======================
       - name: Run Salesforce Code Analyzer
         id: sca
@@ -153,7 +153,7 @@ jobs:
           Write-Host "✅ Pre-check passed: All Salesforce credentials available."
 
       # ======================
-      # 8. Authenticate Salesforce Org
+      # 8. Authenticate Salesforce Org & Cleanup JWT
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
@@ -170,23 +170,46 @@ jobs:
             --alias $env:ORG_ALIAS `
             --instance-url $env:SFDC_HOST
 
-      # ======================
-      # 9. Validate Pre-Deployment
-      # ======================
-      - name: Validate Pre-Deployment
-        shell: powershell
-        run: |
-          Write-Host "Validating deployment..."
-          sf project deploy validate --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
+          # Cleanup JWT file
+          Remove-Item -Force $env:JWT_KEY_FILE
+          Write-Host "Temporary JWT key file deleted."
 
       # ======================
-      # 10. Deploy to Salesforce Org
+      # 9. Identify Changed Components
       # ======================
-      - name: Deploy to Salesforce Org
+      - name: Identify Changed Components
+        id: changed-components
         shell: powershell
         run: |
-          Write-Host "Deploying metadata to Org..."
-          sf project deploy start --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
+          Write-Host "Identifying changed Salesforce components..."
+          git fetch origin $env:GITHUB_REF_NAME
+          $changedFiles = git diff --name-only origin/$env:GITHUB_REF_NAME~1 origin/$env:GITHUB_REF_NAME
+          Write-Host "Changed files:"
+          $changedFiles | ForEach-Object { Write-Host $_ }
+          
+          # Extract only Salesforce metadata files (force-app)
+          $components = $changedFiles | Where-Object { $_ -like "force-app/**" }
+          echo "components=$(($components -join ','))" >> $env:GITHUB_OUTPUT
+
+      # ======================
+      # 10. Deploy Changed Components
+      # ======================
+      - name: Deploy Changed Components
+        shell: powershell
+        run: |
+          $components = "${{ steps.changed-components.outputs.components }}"
+          if ([string]::IsNullOrWhiteSpace($components)) {
+              Write-Host "No changed components to deploy. Skipping deployment."
+          } else {
+              Write-Host "Deploying changed components:"
+              $components.Split(',') | ForEach-Object { Write-Host $_ }
+
+              sf project deploy start `
+                --target-org $env:ORG_ALIAS `
+                --source-dir force-app `
+                --metadata "$components" `
+                --wait 10
+          }
 
       # ======================
       # 11. Run Apex Tests
