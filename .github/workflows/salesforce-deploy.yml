@@ -28,32 +28,50 @@ jobs:
           fetch-depth: 2
 
       # 2️⃣ Install Prerequisites (Cross-platform)
-      - name: Install Prerequisites (Salesforce CLI + Scanner Plugin)
+      - name: Install Salesforce CLI + Scanner Plugin
         shell: bash
         run: |
           echo "Installing Salesforce CLI and Scanner Plugin..."
-          echo "Running on: $(uname -s)"
+          echo "Running on: $RUNNER_OS"
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            echo "Detected Windows runner..."
-            powershell -Command "
-              Write-Host 'Installing Salesforce CLI and Scanner Plugin...'
+            pwsh -Command "
+              Write-Host 'Checking Salesforce CLI...'
               if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+                Write-Host 'Installing Salesforce CLI...'
                 npm install --global @salesforce/cli@2.61.8
+              } else {
+                Write-Host 'Salesforce CLI already installed'
               }
-              sf plugins install @salesforce/sfdx-scanner@3.16.0 2>$null; if ($LASTEXITCODE -ne 0) { Write-Host 'Plugin already installed' }
-              sf plugins update @salesforce/sfdx-scanner
+
+              Write-Host 'Installing/updating SFDX Scanner plugin...'
+              try {
+                sf plugins install @salesforce/sfdx-scanner@3.16.0 -f
+              } catch {
+                Write-Host 'Plugin already installed, updating...'
+                sf plugins update @salesforce/sfdx-scanner
+              }
+
               sf --version
               sf plugins list
             "
           else
-            echo "Detected Linux runner..."
-            set -x
+            set -e
             if ! command -v sf >/dev/null 2>&1; then
+              echo "Installing Salesforce CLI..."
               npm install --global @salesforce/cli@2.61.8
+            else
+              echo "Salesforce CLI already installed"
             fi
-            sf plugins install @salesforce/sfdx-scanner@3.16.0 || echo "Plugin already installed"
-            sf plugins update @salesforce/sfdx-scanner
+
+            if ! sf plugins list | grep -q 'sfdx-scanner'; then
+              echo "Installing SFDX Scanner plugin..."
+              sf plugins install @salesforce/sfdx-scanner@3.16.0
+            else
+              echo "Updating SFDX Scanner plugin..."
+              sf plugins update @salesforce/sfdx-scanner
+            fi
+
             sf --version
             sf plugins list
           fi
@@ -77,14 +95,13 @@ jobs:
         run: |
           echo "Detecting changed Salesforce components..."
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)
+            readarray -t CHANGED_FILES_ARRAY <<< "$(git diff --name-only HEAD~1 HEAD | grep 'force-app' || true)"
           else
-            CHANGED_FILES=$(git diff --name-only HEAD | grep 'force-app' || true)
+            readarray -t CHANGED_FILES_ARRAY <<< "$(git diff --name-only HEAD | grep 'force-app' || true)"
           fi
-          CHANGED_FILES=$(echo "$CHANGED_FILES" | tr '\n' ' ' | xargs)
-          echo "CHANGED_FILES=$CHANGED_FILES" >> $GITHUB_ENV
+          echo "CHANGED_FILES=${CHANGED_FILES_ARRAY[*]}" >> $GITHUB_ENV
           echo "Changed files detected:"
-          echo "$CHANGED_FILES"
+          printf "%s\n" "${CHANGED_FILES_ARRAY[@]}"
 
       # 5️⃣ Static Code Analysis (SCA)
       - name: Run Static Code Analysis
@@ -136,16 +153,7 @@ jobs:
             exit 0
           fi
 
-          touch response.log
-
-          set +e
-          curl -v -u "$NEXUS_USER:$NEXUS_PASS" \
-            --upload-file "$REPORT_PATH" \
-            "$TARGET_URL" \
-            -o response.log -w "%{http_code}" > http_code.txt 2>&1
-          CODE=$(grep -Eo '[0-9]{3}$' http_code.txt || echo "000")
-          set -e
-
+          CODE=$(curl -s -o response.log -w "%{http_code}" -u "$NEXUS_USER:$NEXUS_PASS" --upload-file "$REPORT_PATH" "$TARGET_URL")
           echo "--- Nexus Response Log ---"
           cat response.log || true
           echo "Response code: $CODE"
@@ -162,7 +170,8 @@ jobs:
         shell: bash
         run: |
           echo "Deploying changed components..."
-          for file in $CHANGED_FILES; do
+          read -a FILES <<< "$CHANGED_FILES"
+          for file in "${FILES[@]}"; do
             echo "Deploying: $file"
             sf project deploy start \
               --source-dir "$file" \
