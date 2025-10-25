@@ -27,15 +27,28 @@ jobs:
       # ======================
       # 2. Ensure Git is Installed
       # ======================
-      - name: Verify Git Installation
+      - name: Verify or Install Git
         shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
           if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Error "Git is not installed or not in PATH. Please install Git on this self-hosted runner before proceeding."
-              exit 1
+              Write-Host "Git not found. Installing via winget..."
+              try {
+                  winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+                  $gitPath = "C:\Program Files\Git\cmd"
+                  if (Test-Path $gitPath) {
+                      Write-Host "Adding Git to PATH..."
+                      echo "PATH=$gitPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+                  } else {
+                      Write-Error "Git installation failed. Please verify runner permissions."
+                      exit 1
+                  }
+              } catch {
+                  Write-Error "Git installation failed: $($_.Exception.Message)"
+                  exit 1
+              }
           } else {
-              Write-Host "✅ Git is installed."
+              Write-Host "✅ Git is already installed."
           }
 
       # ======================
@@ -150,6 +163,7 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Identifying changed Salesforce components..."
+          git fetch origin main
           $changedFiles = git diff --name-only origin/main...HEAD
           if (-not $changedFiles) { Write-Host "No changes detected."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
           $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
