@@ -133,13 +133,18 @@ jobs:
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY_PATH }}
+          SFDC_JWT_KEY: ${{ secrets.SF_JWT_KEY }}
         run: |
           Write-Host "Validating Salesforce Credentials..."
           if (-not $env:CONNECTED_APP_CONSUMER_KEY) { Write-Error "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1 }
           if (-not $env:SFDC_USERNAME) { Write-Error "Missing SFDC_USERNAME"; exit 1 }
-          if (-not (Test-Path $env:JWT_KEY_FILE)) { Write-Error "Missing or invalid JWT_KEY_FILE"; exit 1 }
-          Write-Host "✅ Pre-check passed."
+          if (-not $env:SFDC_JWT_KEY) { Write-Error "Missing SF_JWT_KEY"; exit 1 }
+
+          $keyFile = "server.key"
+          Set-Content -Path $keyFile -Value $env:SFDC_JWT_KEY -Encoding ascii
+          $env:JWT_KEY_FILE = (Resolve-Path $keyFile)
+          echo "JWT_KEY_FILE=$env:JWT_KEY_FILE" >> $env:GITHUB_ENV
+          Write-Host "✅ Pre-check passed and key file created: $env:JWT_KEY_FILE"
 
       # ======================
       # 7. Authenticate Salesforce Org
@@ -149,7 +154,6 @@ jobs:
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY_PATH }}
         run: |
           Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
@@ -166,11 +170,16 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Identifying changed Salesforce components..."
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+              Write-Error "Git is not installed or not on PATH."; exit 1
+          }
+
           git fetch origin $env:GITHUB_REF_NAME
           $changedFiles = git diff --name-only origin/main...HEAD
           if (-not $changedFiles) { Write-Host "No changes detected."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
           $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
           if (-not $metadataFiles) { Write-Host "No Salesforce components changed."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
+
           $tempDeployDir = "changed-deploy"
           if (Test-Path $tempDeployDir) { Remove-Item -Recurse -Force $tempDeployDir }
           New-Item -ItemType Directory -Path $tempDeployDir | Out-Null
