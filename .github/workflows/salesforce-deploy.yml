@@ -34,29 +34,29 @@ jobs:
           key: ${{ runner.os }}-sfdx-cli
 
       # ======================
-      # 3. Install Salesforce CLI & Scanner
+      # 3. Install Salesforce CLI & Plugins
       # ======================
       - name: Install Salesforce CLI and Scanner
         shell: powershell
         run: |
           Write-Host "Installing Salesforce CLI and Scanner Plugin..."
+          
           if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-              Write-Error "npm is not installed or not in PATH."
+              Write-Error "npm not installed. Install Node.js on this runner."
               exit 1
           }
+
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-              Write-Host "Installing Salesforce CLI..."
               npm install --global @salesforce/cli@latest
               $npmGlobalPath = (npm root -g).Replace('node_modules', '')
               echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           } else {
-              Write-Host "Salesforce CLI already installed."
               $npmGlobalPath = (npm root -g).Replace('node_modules', '')
               echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
-          Write-Host "Installing/updating Salesforce Scanner plugin..."
-          try { sf plugins install @salesforce/sfdx-scanner@latest } catch { Write-Host "Plugin already installed or updated." }
-          try { sf plugins update } catch { Write-Host "Plugin update skipped." }
+
+          try { sf plugins install @salesforce/sfdx-scanner@latest } catch {}
+          try { sf plugins update } catch {}
           Write-Host "Salesforce CLI & Scanner setup completed."
 
       # ======================
@@ -86,7 +86,7 @@ jobs:
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
         run: |
           $projectName = "SF-CICD-POC"
-          $branchName = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
+          $branchName  = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
           $buildNumber = $env:GITHUB_RUN_NUMBER
           $htmlReport = "${{ steps.sca.outputs.report }}"
           $nexusPath = "$projectName/$branchName/$buildNumber"
@@ -99,7 +99,7 @@ jobs:
           $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
 
           while (-not $success -and $attempt -le $maxRetries) {
-              Write-Host "Attempt ${attempt} of ${maxRetries}: Uploading ${htmlReport}..."
+              Write-Host "Attempt ${attempt} of ${maxRetries}: Uploading ${htmlReport} ..."
               try {
                   $response = Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
                   if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
@@ -125,12 +125,17 @@ jobs:
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY }}
+          JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           Write-Host "Validating Salesforce Credentials..."
           if (-not $env:CONNECTED_APP_CONSUMER_KEY) { Write-Error "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1 }
           if (-not $env:SFDC_USERNAME) { Write-Error "Missing SFDC_USERNAME"; exit 1 }
-          if (-not (Test-Path $env:JWT_KEY_FILE -PathType Leaf)) { Write-Error "Missing or invalid JWT_KEY_FILE"; exit 1 }
+
+          # Save JWT key content to temporary file
+          $jwtFile = Join-Path $env:TEMP "jwt.key"
+          $env:JWT_KEY_FILE = $jwtFile
+          $env:JWT_KEY_CONTENT | Out-File -FilePath $jwtFile -Encoding ascii
+          if (-not (Test-Path $jwtFile -PathType Leaf)) { Write-Error "Failed to write JWT key"; exit 1 }
           Write-Host "✅ Pre-check passed: All Salesforce credentials available."
 
       # ======================
@@ -138,10 +143,6 @@ jobs:
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
-        env:
-          CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
-          SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY }}
         run: |
           Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
@@ -152,44 +153,53 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 8. Identify Changed Components
+      # 8. Validate Pre-Deployment
+      # ======================
+      - name: Validate Pre-Deployment
+        shell: powershell
+        run: |
+          Write-Host "Validating deployment..."
+          sf project deploy validate --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
+
+      # ======================
+      # 12. Identify Changed Components
       # ======================
       - name: Identify Changed Salesforce Components
-        id: identify_changed
+        id: changed_components
         shell: powershell
         run: |
           Write-Host "Identifying changed Salesforce components..."
-          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Error "Git is not installed or not in PATH."; exit 1
+          git fetch origin main
+          $changedFiles = git diff --name-only origin/main $env:GITHUB_SHA
+          $metadataFiles = $changedFiles | Where-Object { $_ -match '\.cls$|\.trigger$|\.page$|\.component$|\.object$|\.flow$' }
+
+          if (-not $metadataFiles) {
+              Write-Host "No Salesforce metadata changes detected."
+              echo "components=" >> $env:GITHUB_OUTPUT
+          } else {
+              $changedDir = "changed-components"
+              if (Test-Path $changedDir) { Remove-Item -Recurse -Force $changedDir }
+              New-Item -ItemType Directory -Path $changedDir | Out-Null
+              foreach ($file in $metadataFiles) {
+                  $dest = Join-Path $changedDir $file
+                  New-Item -ItemType Directory -Path (Split-Path $dest) -Force | Out-Null
+                  Copy-Item -Path $file -Destination $dest -Force
+              }
+              echo "components=$changedDir" >> $env:GITHUB_OUTPUT
           }
-          $branch = $env:GITHUB_REF_NAME
-          git fetch origin $branch
-          $changedFiles = git diff --name-only origin/$branch^1 $branch | Where-Object { $_ -like 'force-app/*' }
-          if (-not $changedFiles) { Write-Host "No changed components."; exit 0 }
-          Write-Host "Changed files:"; $changedFiles | ForEach-Object { Write-Host $_ }
-          echo "changed_files=$($changedFiles -join ';')" >> $env:GITHUB_OUTPUT
 
       # ======================
-      # 9. Deploy Changed Components
+      # 13. Deploy Changed Components
       # ======================
-      - name: Deploy Changed Components to Salesforce
+      - name: Deploy Changed Salesforce Components
         shell: powershell
         run: |
-          $changedFiles = "${{ steps.identify_changed.outputs.changed_files }}"
-          if (-not $changedFiles) { Write-Host "No components to deploy."; exit 0 }
-          Write-Host "Deploying changed components..."
-          $tempDir = "temp-deploy"
-          if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
-          New-Item -ItemType Directory -Path $tempDir | Out-Null
-          $changedFiles -split ";" | ForEach-Object {
-              $sourcePath = Join-Path $env:GITHUB_WORKSPACE $_
-              $destPath = Join-Path $tempDir $_
-              $destDir = Split-Path $destPath -Parent
-              if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir | Out-Null }
-              Copy-Item -Path $sourcePath -Destination $destPath
+          if (-not ${{ steps.changed_components.outputs.components }}) {
+              Write-Host "No changed components to deploy."
+              exit 0
           }
-          sf project deploy start --target-org $env:ORG_ALIAS --source-dir $tempDir --wait 10
-          Write-Host "✅ Changed components deployed successfully."
+          Write-Host "Deploying only changed Salesforce components..."
+          sf project deploy start --target-org $env:ORG_ALIAS --source-dir ${{ steps.changed_components.outputs.components }} --wait 10
 
       # ======================
       # 10. Run Apex Tests
