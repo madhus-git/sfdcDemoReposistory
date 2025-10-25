@@ -37,7 +37,7 @@ jobs:
       # 3. Install Salesforce CLI & Plugins
       # ======================
       - name: Install Salesforce CLI and Scanner
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Installing Salesforce CLI and Scanner Plugin..."
           
@@ -72,7 +72,7 @@ jobs:
       # ======================
       - name: Run Salesforce Code Analyzer
         id: sca
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Running Static Code Analysis..."
           $dateStamp = Get-Date -Format "ddMMyy"
@@ -89,7 +89,7 @@ jobs:
       # 5. Upload SCA Report to Nexus
       # ======================
       - name: Upload SCA Report to Nexus
-        shell: pwsh
+        shell: powershell
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
@@ -114,7 +114,7 @@ jobs:
       # 6. Pre-Check Salesforce Credentials
       # ======================
       - name: Pre-Check Salesforce Credentials
-        shell: pwsh
+        shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SFDC_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SFDC_USERNAME }}
@@ -130,7 +130,7 @@ jobs:
       # 7. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
-        shell: pwsh
+        shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SFDC_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SFDC_USERNAME }}
@@ -148,7 +148,7 @@ jobs:
       # 8. Validate Pre-Deployment
       # ======================
       - name: Validate Pre-Deployment
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Validating deployment..."
           sf project deploy validate --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
@@ -157,7 +157,7 @@ jobs:
       # 9. Deploy to Salesforce Org
       # ======================
       - name: Deploy to Salesforce Org
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Deploying metadata to Org..."
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir force-app --wait 10
@@ -166,7 +166,7 @@ jobs:
       # 10. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Running Apex Unit Tests..."
           New-Item -ItemType Directory -Path "test-results" -Force | Out-Null
@@ -182,7 +182,7 @@ jobs:
       # 11. Cleanup Workspace
       # ======================
       - name: Cleanup Workspace
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Cleaning workspace..."
           Remove-Item -Recurse -Force * -ErrorAction SilentlyContinue
