@@ -72,7 +72,7 @@ jobs:
           try { sf plugins install @salesforce/sfdx-scanner@latest } catch { Write-Host "Plugin already installed." }
 
       # ======================
-      # 5. Run Static Code Analysis
+      # 5. Static Code Analysis
       # ======================
       - name: Run Salesforce Code Analyzer
         id: sca
@@ -144,7 +144,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify changed Salesforce components
+      # 9. Identify changed components
       # ======================
       - name: Identify changed Salesforce components
         shell: powershell
@@ -169,7 +169,7 @@ jobs:
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy changed components
+      # 10. Deploy changed components (conditional)
       # ======================
       - name: Deploy changed Salesforce components
         if: env.CHANGED_DIR != 'none'
@@ -197,7 +197,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 12. Cleanup Workspace
+      # 12. Cleanup
       # ======================
       - name: Cleanup Workspace
         shell: powershell
