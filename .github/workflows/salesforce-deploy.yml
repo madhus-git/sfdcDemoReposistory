@@ -41,13 +41,11 @@ jobs:
         run: |
           Write-Host "Installing Salesforce CLI and Scanner Plugin..."
           
-          # Ensure npm is available
           if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-              Write-Error "npm is not installed or not in PATH. Please install Node.js on this runner."
+              Write-Error "npm is not installed or not in PATH. Please install Node.js."
               exit 1
           }
 
-          # Install Salesforce CLI if missing
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
               Write-Host "Salesforce CLI not found. Installing..."
               npm install --global @salesforce/cli@latest
@@ -60,23 +58,21 @@ jobs:
               echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           }
 
-          # Install or update the SFDX Scanner plugin
           Write-Host "Installing or updating Salesforce Scanner plugin..."
           try {
               sf plugins install @salesforce/sfdx-scanner@latest
           } catch {
-              Write-Host "Plugin may already be installed or updated."
+              Write-Host "Plugin may already be installed."
           }
 
-          # Update plugins (no specific plugin argument)
           Write-Host "Updating all Salesforce plugins..."
           try{
               sf plugins update
           } catch {
               Write-Host "Plugin update skipped or not required."
           }
-          
-          Write-Host "Salesforce CLI & Scanner setup completed successfully."
+
+          Write-Host "✅ Salesforce CLI & Scanner setup completed."
 
       # ======================
       # 4. Static Code Analysis
@@ -107,7 +103,6 @@ jobs:
         run: |
           $projectName = "SF-CICD-POC"
           $branchName  = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
-          $dateStamp = Get-Date -Format "ddMMyy"
           $buildNumber = $env:GITHUB_RUN_NUMBER
           $htmlReport = "${{ steps.sca.outputs.report }}"
           $nexusPath = "$projectName/$branchName/$buildNumber"
@@ -117,7 +112,6 @@ jobs:
           $delay = 5
           $attempt = 1
           $success = $false
-
           $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
 
           while (-not $success -and $attempt -le $maxRetries) {
@@ -129,42 +123,35 @@ jobs:
                       $success = $true
                   } else {
                       Write-Warning "Upload failed with HTTP code: $($response.StatusCode)"
-                      if ($attempt -lt $maxRetries) {
-                          Write-Host "Retrying in ${delay} seconds..."
-                          Start-Sleep -Seconds $delay
-                          $delay *= 2
-                      }
+                      if ($attempt -lt $maxRetries) { Start-Sleep -Seconds $delay; $delay *= 2 }
                   }
               } catch {
                   Write-Warning "Error during upload: $($_.Exception.Message)"
-                  if ($attempt -lt $maxRetries) {
-                      Write-Host "Retrying in ${delay} seconds..."
-                      Start-Sleep -Seconds $delay
-                      $delay *= 2
-                  }
+                  if ($attempt -lt $maxRetries) { Start-Sleep -Seconds $delay; $delay *= 2 }
               }
               $attempt++
           }
-
-          if (-not $success) {
-              Write-Error "❌ Failed to upload report to Nexus after ${maxRetries} attempts."
-              exit 1
-          }
+          if (-not $success) { Write-Error "❌ Failed to upload report to Nexus after ${maxRetries} attempts."; exit 1 }
 
       # ======================
-      # 6. Pre-Check Salesforce Credentials
+      # 6. Pre-Check Salesforce Credentials (JWT fix)
       # ======================
       - name: Pre-Check Salesforce Credentials
         shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY }}
+          JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           Write-Host "Validating Salesforce Credentials..."
           if (-not $env:CONNECTED_APP_CONSUMER_KEY) { Write-Error "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1 }
           if (-not $env:SFDC_USERNAME) { Write-Error "Missing SFDC_USERNAME"; exit 1 }
-          if (-not (Test-Path $env:JWT_KEY_FILE)) { Write-Error "Missing or invalid JWT_KEY_FILE"; exit 1 }
+          if (-not $env:JWT_KEY_CONTENT) { Write-Error "Missing JWT secret"; exit 1 }
+
+          # Write JWT to temp file
+          $jwtFile = Join-Path $env:TEMP "jwt.key"
+          $env:JWT_KEY_FILE = $jwtFile
+          $env:JWT_KEY_CONTENT | Out-File -FilePath $jwtFile -Encoding ascii -Force
           Write-Host "✅ Pre-check passed: All Salesforce credentials available."
 
       # ======================
@@ -175,7 +162,7 @@ jobs:
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
-          JWT_KEY_FILE: ${{ secrets.SF_JWT_KEY_FILE_PATH }}
+          JWT_KEY_FILE: ${{ env:JWT_KEY_FILE }}
         run: |
           Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
