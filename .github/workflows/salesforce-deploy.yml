@@ -109,7 +109,7 @@ jobs:
           Write-Host "✅ Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. Write & Validate JWT Key File
+      # 7. Write & Validate JWT Key File (FIXED)
       # ======================
       - name: Write and Validate JWT Key File
         shell: powershell
@@ -119,19 +119,30 @@ jobs:
           $keyPath = "C:\actions-runner\_work\jwt.key"
           Write-Host "Creating JWT key file at $keyPath..."
 
-          # Write key preserving formatting
-          $decoded = $env:SF_JWT_KEY_CONTENT -replace '\r', "`r" -replace '\n', "`n"
-          [IO.File]::WriteAllText($keyPath, $decoded)
+          if (-not $env:SF_JWT_KEY_CONTENT) {
+              Write-Error "❌ SF_JWT_KEY_CONTENT secret is empty or missing. Please check your GitHub secret."
+              exit 1
+          }
 
+          # Detect if the key is base64 encoded or plain text
+          if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
+              Write-Host "Detected base64 encoded key. Decoding..."
+              $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
+              Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
+          } else {
+              Write-Host "Writing plain-text RSA key..."
+              $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
+          }
+
+          # Validate key file
           if (-not (Test-Path $keyPath)) {
               Write-Error "❌ JWT key file creation failed."
               exit 1
           }
 
-          # ✅ Validate content
-          $content = Get-Content -Path $keyPath -Raw
-          if ($content -notmatch "-----BEGIN RSA PRIVATE KEY-----") {
-              Write-Error "❌ Invalid JWT Key: Missing 'BEGIN RSA PRIVATE KEY' header. Check your secret format in GitHub."
+          $firstLine = Get-Content -Path $keyPath -TotalCount 1
+          if ($firstLine -notmatch "-----BEGIN (RSA )?PRIVATE KEY-----") {
+              Write-Error "❌ Invalid key file format. Expected '-----BEGIN RSA PRIVATE KEY-----', got: $firstLine"
               exit 1
           }
 
@@ -139,7 +150,23 @@ jobs:
           echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # ======================
-      # 8. Authenticate Salesforce Org
+      # 8. Verify JWT File Content (DEBUG)
+      # ======================
+      - name: Verify JWT Key File
+        shell: powershell
+        run: |
+          $path = "C:\actions-runner\_work\jwt.key"
+          if (Test-Path $path) {
+              Write-Host "✅ JWT key file exists."
+              Write-Host "First 3 lines of key file:"
+              Get-Content -Path $path -TotalCount 3
+          } else {
+              Write-Error "❌ JWT key file missing."
+              exit 1
+          }
+
+      # ======================
+      # 9. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
@@ -156,7 +183,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify Changed Components
+      # 10. Identify Changed Components
       # ======================
       - name: Identify changed Salesforce components
         shell: powershell
@@ -181,7 +208,7 @@ jobs:
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy Changed Components
+      # 11. Deploy Changed Components
       # ======================
       - name: Deploy changed Salesforce components
         if: env.CHANGED_DIR != 'none'
@@ -191,7 +218,7 @@ jobs:
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10
 
       # ======================
-      # 11. Run Apex Tests
+      # 12. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
@@ -209,7 +236,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 12. Cleanup
+      # 13. Cleanup
       # ======================
       - name: Cleanup Workspace
         shell: powershell
