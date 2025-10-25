@@ -35,7 +35,7 @@ jobs:
               Write-Error "Git is not installed or not in PATH. Install Git manually on this self-hosted runner."
               exit 1
           } else {
-              Write-Host "✅ Git is installed."
+              Write-Host "Git is installed."
           }
 
       # ======================
