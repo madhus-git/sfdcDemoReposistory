@@ -27,35 +27,37 @@ jobs:
         with:
           fetch-depth: 2
 
-      # 2️⃣ Install Prerequisites (Cross-platform)
-      - name: Install Salesforce CLI + Scanner Plugin
+      # 2️⃣ Install Salesforce CLI + SFDX Scanner Plugin (Cross-platform)
+      - name: Install Salesforce CLI + SFDX Scanner Plugin
         shell: bash
         run: |
-          echo "Installing Salesforce CLI and Scanner Plugin..."
+          echo "Installing Salesforce CLI and SFDX Scanner Plugin..."
           echo "Running on: $RUNNER_OS"
 
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            pwsh -Command "
-              Write-Host 'Checking Salesforce CLI...'
+            echo "Detected Windows runner..."
+            powershell -NoProfile -Command "& {
+              Write-Host 'Checking Salesforce CLI...';
               if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-                Write-Host 'Installing Salesforce CLI...'
-                npm install --global @salesforce/cli@2.61.8
+                Write-Host 'Installing Salesforce CLI...';
+                npm install --global @salesforce/cli@2.61.8;
               } else {
-                Write-Host 'Salesforce CLI already installed'
+                Write-Host 'Salesforce CLI already installed';
               }
 
-              Write-Host 'Installing/updating SFDX Scanner plugin...'
+              Write-Host 'Installing/updating SFDX Scanner plugin...';
               try {
-                sf plugins install @salesforce/sfdx-scanner@3.16.0 -f
+                sf plugins install @salesforce/sfdx-scanner@3.16.0 -f;
               } catch {
-                Write-Host 'Plugin already installed, updating...'
-                sf plugins update @salesforce/sfdx-scanner
+                Write-Host 'Plugin already installed, updating...';
+                sf plugins update @salesforce/sfdx-scanner;
               }
 
-              sf --version
-              sf plugins list
-            "
+              sf --version;
+              sf plugins list;
+            }"
           else
+            echo "Detected Linux/macOS runner..."
             set -e
             if ! command -v sf >/dev/null 2>&1; then
               echo "Installing Salesforce CLI..."
