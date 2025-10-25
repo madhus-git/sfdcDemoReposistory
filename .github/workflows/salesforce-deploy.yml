@@ -32,20 +32,10 @@ jobs:
         run: |
           Write-Host "Verifying Git installation..."
           if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Host "Git not found. Installing via winget..."
-              try {
-                  winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
-                  $gitPath = "C:\Program Files\Git\cmd"
-                  if (Test-Path $gitPath) {
-                      Write-Host "Adding Git to PATH..."
-                      echo "PATH=$gitPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-                  }
-              } catch {
-                  Write-Error "Failed to install Git. Please verify runner permissions."
-                  exit 1
-              }
+              Write-Error "Git is not installed or not in PATH. Please install Git on this self-hosted runner before proceeding."
+              exit 1
           } else {
-              Write-Host "Git already installed."
+              Write-Host "✅ Git is installed."
           }
 
       # ======================
@@ -131,7 +121,8 @@ jobs:
           Write-Host "Validating Salesforce Credentials..."
           if (-not $env:CONNECTED_APP_CONSUMER_KEY) { Write-Error "Missing CONNECTED_APP_CONSUMER_KEY"; exit 1 }
           if (-not $env:SFDC_USERNAME) { Write-Error "Missing SFDC_USERNAME"; exit 1 }
-          if (-not (Test-Path $env:JWT_KEY_FILE)) { Write-Error "Missing or invalid JWT_KEY_FILE"; exit 1 }
+          if (-not $env:JWT_KEY_FILE) { Write-Error "Missing JWT_KEY_FILE environment variable"; exit 1 }
+          if (-not (Test-Path $env:JWT_KEY_FILE)) { Write-Error "JWT_KEY_FILE path does not exist"; exit 1 }
           Write-Host "✅ Pre-check passed."
 
       # ======================
@@ -159,7 +150,6 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Identifying changed Salesforce components..."
-          git fetch origin main
           $changedFiles = git diff --name-only origin/main...HEAD
           if (-not $changedFiles) { Write-Host "No changes detected."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
           $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
@@ -178,19 +168,20 @@ jobs:
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy changed components
+      # 10. Deploy changed components (conditional)
       # ======================
       - name: Deploy changed Salesforce components
-        shell: powershell
         if: env.CHANGED_DIR != 'none'
+        shell: powershell
         run: |
           Write-Host "Deploying only changed components..."
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10
 
       # ======================
-      # 11. Run Apex Tests
+      # 11. Run Apex Tests (conditional)
       # ======================
       - name: Run Apex Unit Tests
+        if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
           Write-Host "Running Apex Unit Tests..."
@@ -198,6 +189,7 @@ jobs:
           sf apex run test --target-org $env:ORG_ALIAS --result-format junit --output-dir test-results --wait 10
 
       - name: Publish Apex Test Results
+        if: env.CHANGED_DIR != 'none'
         uses: actions/upload-artifact@v4
         with:
           name: Apex-Test-Results
