@@ -161,7 +161,7 @@ jobs:
               Write-Host "First 3 lines of key file:"
               Get-Content -Path $path -TotalCount 3
           } else {
-              Write-Error "❌ JWT key file missing."
+              Write-Error "JWT key file missing."
               exit 1
           }
 
@@ -204,7 +204,7 @@ jobs:
               if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir | Out-Null }
               Copy-Item $file $dest
           }
-          Write-Host "✅ Changed components copied to $tempDeployDir"
+          Write-Host "Changed components copied to $tempDeployDir"
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
