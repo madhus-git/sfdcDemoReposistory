@@ -21,7 +21,7 @@ jobs:
       NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
 
     steps:
-      # 1️⃣ Checkout Code (cross-platform, works for Windows too )
+      # 1️⃣ Checkout Code (cross-platform)
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
@@ -32,25 +32,23 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          Write-Host "Installing Salesforce CLI and SFDX Scanner Plugin..."
-          
-          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-            Write-Host "Installing Salesforce CLI..."
-            npm install --global @salesforce/cli@2.61.8
-          } else {
-            Write-Host "Salesforce CLI already installed"
-          }
+          Write-Host "Installing Salesforce CLI..."
+          npm install --global @salesforce/cli@2.61.8
+
+          # Path to sf.cmd
+          $sfCmd = Join-Path ((npm config get prefix) + "\bin") "sf.cmd"
+          Write-Host "Using sf command: $sfCmd"
 
           Write-Host "Installing/updating SFDX Scanner plugin..."
           try {
-            sf plugins install @salesforce/sfdx-scanner@3.16.0 -f
+            & $sfCmd plugins install @salesforce/sfdx-scanner@3.16.0 -f
           } catch {
             Write-Host "Plugin already installed, updating..."
-            sf plugins update @salesforce/sfdx-scanner
+            & $sfCmd plugins update @salesforce/sfdx-scanner
           }
 
-          sf --version
-          sf plugins list
+          & $sfCmd --version
+          & $sfCmd plugins list
 
       # 3️⃣ Install Salesforce CLI + SFDX Scanner Plugin (Linux/macOS)
       - name: Install Salesforce CLI + SFDX Scanner Plugin (Linux/macOS)
@@ -84,12 +82,13 @@ jobs:
         shell: powershell
         run: |
           Set-Content -Path server.key -Value "${{ secrets.SF_JWT_KEY }}"
-          sf org login jwt --username ${{ secrets.SF_USERNAME }} `
+          $sfCmd = Join-Path ((npm config get prefix) + "\bin") "sf.cmd"
+          & $sfCmd org login jwt --username ${{ secrets.SF_USERNAME }} `
             --jwt-key-file server.key `
             --client-id ${{ secrets.SF_CONSUMER_KEY }} `
             --instance-url ${{ secrets.SF_INSTANCE_URL }} `
             --alias $Env:ORG_ALIAS
-          sf org display --target-org $Env:ORG_ALIAS
+          & $sfCmd org display --target-org $Env:ORG_ALIAS
 
       # 5️⃣ Authenticate to Org (Linux/macOS)
       - name: Authenticate to Org (Linux/macOS)
@@ -135,7 +134,7 @@ jobs:
           echo "CHANGED_FILES=${CHANGED_FILES_ARRAY[*]}" >> $GITHUB_ENV
           printf "%s\n" "${CHANGED_FILES_ARRAY[@]}"
 
-      # 8️⃣ Static Code Analysis (SCA) (cross-platform)
+      # 8️⃣ Static Code Analysis (cross-platform)
       - name: Run Static Code Analysis
         shell: bash
         run: |
@@ -149,21 +148,21 @@ jobs:
             --output-file ${HTML_DIR}/${HTML_REPORT} | tee ${HTML_DIR}/sca.log
           echo "HTML_REPORT=${HTML_REPORT}" >> $GITHUB_ENV
 
-      # 9️⃣ Upload SCA Report to GitHub Artifacts (cross-platform)
+      # 9️⃣ Upload SCA Report to GitHub Artifacts
       - name: Upload SCA Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Salesforce-Code-Analyzer-Report
           path: ${{ env.HTML_DIR }}/
 
-      # 10️⃣ Test Nexus Connectivity (cross-platform)
+      # 10️⃣ Test Nexus Connectivity
       - name: Test Nexus Connectivity
         shell: bash
         run: |
           echo "Testing Nexus URL connectivity..."
           curl -v --connect-timeout 10 "$NEXUS_URL" || echo "❌ Nexus not reachable."
 
-      # 11️⃣ Upload SCA Report to Nexus (cross-platform)
+      # 11️⃣ Upload SCA Report to Nexus
       - name: Upload SCA Report to Nexus
         if: always()
         continue-on-error: true
@@ -207,7 +206,7 @@ jobs:
               --ignore-errors || true
           done
 
-      # 13️⃣ Run Apex Tests (cross-platform)
+      # 13️⃣ Run Apex Tests
       - name: Run Apex Unit Tests
         shell: bash
         run: |
@@ -218,18 +217,17 @@ jobs:
             --output-dir test-results \
             --wait 10 | tee test-results/apex.log
 
-      # 14️⃣ Upload Apex Test Results (cross-platform)
+      # 14️⃣ Upload Apex Test Results
       - name: Upload Apex Test Results
         uses: actions/upload-artifact@v4
         with:
           name: Apex-Test-Results
           path: test-results/
 
-      # 15️⃣ Post Deployment Summary (cross-platform)
+      # 15️⃣ Post Deployment Summary
       - name: Post Deployment Summary
         if: always()
         shell: bash
         run: |
           echo "✅ Salesforce Deployment Completed Successfully"
-          echo "Files deployed:"
-          echo "$CHANGED_FILES"
+          echo "Files
