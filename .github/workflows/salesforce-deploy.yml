@@ -21,65 +21,79 @@ jobs:
       NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
 
     steps:
-      # 1️⃣ Checkout Code
+      # 1️⃣ Checkout Code (cross-platform, works for Windows too)
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      # 2️⃣ Install Salesforce CLI + SFDX Scanner Plugin (Cross-platform)
-      - name: Install Salesforce CLI + SFDX Scanner Plugin
+      # 2️⃣ Install Salesforce CLI + SFDX Scanner Plugin (Windows)
+      - name: Install Salesforce CLI + SFDX Scanner Plugin (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Write-Host "Installing Salesforce CLI and SFDX Scanner Plugin..."
+          
+          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+            Write-Host "Installing Salesforce CLI..."
+            npm install --global @salesforce/cli@2.61.8
+          } else {
+            Write-Host "Salesforce CLI already installed"
+          }
+
+          Write-Host "Installing/updating SFDX Scanner plugin..."
+          try {
+            sf plugins install @salesforce/sfdx-scanner@3.16.0 -f
+          } catch {
+            Write-Host "Plugin already installed, updating..."
+            sf plugins update @salesforce/sfdx-scanner
+          }
+
+          sf --version
+          sf plugins list
+
+      # 3️⃣ Install Salesforce CLI + SFDX Scanner Plugin (Linux/macOS)
+      - name: Install Salesforce CLI + SFDX Scanner Plugin (Linux/macOS)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           echo "Installing Salesforce CLI and SFDX Scanner Plugin..."
-          echo "Running on: $RUNNER_OS"
+          set -e
 
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            echo "Detected Windows runner..."
-            powershell -NoProfile -Command "& {
-              Write-Host 'Checking Salesforce CLI...';
-              if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-                Write-Host 'Installing Salesforce CLI...';
-                npm install --global @salesforce/cli@2.61.8;
-              } else {
-                Write-Host 'Salesforce CLI already installed';
-              }
-
-              Write-Host 'Installing/updating SFDX Scanner plugin...';
-              try {
-                sf plugins install @salesforce/sfdx-scanner@3.16.0 -f;
-              } catch {
-                Write-Host 'Plugin already installed, updating...';
-                sf plugins update @salesforce/sfdx-scanner;
-              }
-
-              sf --version;
-              sf plugins list;
-            }"
+          if ! command -v sf >/dev/null 2>&1; then
+            echo "Installing Salesforce CLI..."
+            npm install --global @salesforce/cli@2.61.8
           else
-            echo "Detected Linux/macOS runner..."
-            set -e
-            if ! command -v sf >/dev/null 2>&1; then
-              echo "Installing Salesforce CLI..."
-              npm install --global @salesforce/cli@2.61.8
-            else
-              echo "Salesforce CLI already installed"
-            fi
-
-            if ! sf plugins list | grep -q 'sfdx-scanner'; then
-              echo "Installing SFDX Scanner plugin..."
-              sf plugins install @salesforce/sfdx-scanner@3.16.0
-            else
-              echo "Updating SFDX Scanner plugin..."
-              sf plugins update @salesforce/sfdx-scanner
-            fi
-
-            sf --version
-            sf plugins list
+            echo "Salesforce CLI already installed"
           fi
 
-      # 3️⃣ Authenticate to Org
-      - name: Authenticate to Org
+          if ! sf plugins list | grep -q 'sfdx-scanner'; then
+            echo "Installing SFDX Scanner plugin..."
+            sf plugins install @salesforce/sfdx-scanner@3.16.0
+          else
+            echo "Updating SFDX Scanner plugin..."
+            sf plugins update @salesforce/sfdx-scanner
+          fi
+
+          sf --version
+          sf plugins list
+
+      # 4️⃣ Authenticate to Org (Windows)
+      - name: Authenticate to Org (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Set-Content -Path server.key -Value "${{ secrets.SF_JWT_KEY }}"
+          sf org login jwt --username ${{ secrets.SF_USERNAME }} `
+            --jwt-key-file server.key `
+            --client-id ${{ secrets.SF_CONSUMER_KEY }} `
+            --instance-url ${{ secrets.SF_INSTANCE_URL }} `
+            --alias $Env:ORG_ALIAS
+          sf org display --target-org $Env:ORG_ALIAS
+
+      # 5️⃣ Authenticate to Org (Linux/macOS)
+      - name: Authenticate to Org (Linux/macOS)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           echo "${{ secrets.SF_JWT_KEY }}" > server.key
@@ -90,10 +104,27 @@ jobs:
             --alias $ORG_ALIAS
           sf org display --target-org $ORG_ALIAS
 
-      # 4️⃣ Identify Changed Files
-      - name: Identify changed components
+      # 6️⃣ Identify Changed Files (Windows)
+      - name: Identify changed components (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
         id: changed
+        run: |
+          Write-Host "Detecting changed Salesforce components..."
+          $changed = if (git rev-parse HEAD~1 -ErrorAction SilentlyContinue) {
+            git diff --name-only HEAD~1 HEAD | Select-String 'force-app'
+          } else {
+            git diff --name-only HEAD | Select-String 'force-app'
+          }
+          $changedFiles = $changed -join ' '
+          Write-Host "CHANGED_FILES=$changedFiles"
+          echo "CHANGED_FILES=$changedFiles" >> $Env:GITHUB_ENV
+
+      # 7️⃣ Identify Changed Files (Linux/macOS)
+      - name: Identify changed components (Linux/macOS)
+        if: runner.os != 'Windows'
         shell: bash
+        id: changed
         run: |
           echo "Detecting changed Salesforce components..."
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
@@ -102,10 +133,9 @@ jobs:
             readarray -t CHANGED_FILES_ARRAY <<< "$(git diff --name-only HEAD | grep 'force-app' || true)"
           fi
           echo "CHANGED_FILES=${CHANGED_FILES_ARRAY[*]}" >> $GITHUB_ENV
-          echo "Changed files detected:"
           printf "%s\n" "${CHANGED_FILES_ARRAY[@]}"
 
-      # 5️⃣ Static Code Analysis (SCA)
+      # 8️⃣ Static Code Analysis (SCA) (cross-platform)
       - name: Run Static Code Analysis
         shell: bash
         run: |
@@ -119,39 +149,35 @@ jobs:
             --output-file ${HTML_DIR}/${HTML_REPORT} | tee ${HTML_DIR}/sca.log
           echo "HTML_REPORT=${HTML_REPORT}" >> $GITHUB_ENV
 
-      # 6️⃣ Upload SCA Report to GitHub Artifacts
+      # 9️⃣ Upload SCA Report to GitHub Artifacts (cross-platform)
       - name: Upload SCA Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Salesforce-Code-Analyzer-Report
           path: ${{ env.HTML_DIR }}/
 
-      # 7️⃣ Test Nexus Connectivity
+      # 10️⃣ Test Nexus Connectivity (cross-platform)
       - name: Test Nexus Connectivity
         shell: bash
         run: |
           echo "Testing Nexus URL connectivity..."
-          echo "NEXUS_URL: $NEXUS_URL"
           curl -v --connect-timeout 10 "$NEXUS_URL" || echo "❌ Nexus not reachable."
 
-      # 8️⃣ Upload SCA Report to Nexus (Safe & Graceful)
+      # 11️⃣ Upload SCA Report to Nexus (cross-platform)
       - name: Upload SCA Report to Nexus
         if: always()
         continue-on-error: true
         shell: bash
         run: |
-          echo "Uploading SCA Report to Nexus..."
           BRANCH_NAME="${GITHUB_REF##*/}"
           BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/' '_' | tr -cd '[:alnum:]_.-')
           NEXUS_PATH="${PROJECT_NAME}/${BRANCH_NAME}/${BUILD_NUMBER}"
           REPORT_PATH="${HTML_DIR}/${HTML_REPORT}"
           TARGET_URL="${NEXUS_URL}/${NEXUS_PATH}/${HTML_REPORT}"
-
-          echo "Report file: $REPORT_PATH"
-          echo "Target URL: $TARGET_URL"
+          echo "Uploading $REPORT_PATH to $TARGET_URL"
 
           if [ ! -f "$REPORT_PATH" ]; then
-            echo "⚠️ Report not found: $REPORT_PATH"
+            echo "⚠️ Report not found"
             exit 0
           fi
 
@@ -161,17 +187,16 @@ jobs:
           echo "Response code: $CODE"
 
           if [ "$CODE" != "201" ] && [ "$CODE" != "200" ]; then
-            echo "⚠️ Nexus upload failed (HTTP $CODE). Continuing pipeline..."
+            echo "⚠️ Nexus upload failed (HTTP $CODE)"
           else
-            echo "✅ Uploaded successfully to Nexus: $TARGET_URL"
+            echo "✅ Uploaded successfully to Nexus"
           fi
 
-      # 9️⃣ Deploy Changed Components
+      # 12️⃣ Deploy Changed Components (cross-platform)
       - name: Deploy changed components to Target Org
         if: env.CHANGED_FILES != ''
         shell: bash
         run: |
-          echo "Deploying changed components..."
           read -a FILES <<< "$CHANGED_FILES"
           for file in "${FILES[@]}"; do
             echo "Deploying: $file"
@@ -182,11 +207,10 @@ jobs:
               --ignore-errors || true
           done
 
-      # 🔟 Run Apex Tests
+      # 13️⃣ Run Apex Tests (cross-platform)
       - name: Run Apex Unit Tests
         shell: bash
         run: |
-          echo "Running Apex Unit Tests..."
           mkdir -p test-results
           sf apex run test \
             --target-org $ORG_ALIAS \
@@ -194,14 +218,14 @@ jobs:
             --output-dir test-results \
             --wait 10 | tee test-results/apex.log
 
-      # 1️⃣1️⃣ Upload Apex Test Results
+      # 14️⃣ Upload Apex Test Results (cross-platform)
       - name: Upload Apex Test Results
         uses: actions/upload-artifact@v4
         with:
           name: Apex-Test-Results
           path: test-results/
 
-      # 1️⃣2️⃣ Post Deployment Summary
+      # 15️⃣ Post Deployment Summary (cross-platform)
       - name: Post Deployment Summary
         if: always()
         shell: bash
