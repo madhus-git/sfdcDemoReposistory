@@ -217,4 +217,4 @@ jobs:
           Write-Host "Cleaning workspace..."
           Remove-Item -Recurse -Force * -ErrorAction SilentlyContinue
           Remove-Item "C:\actions-runner\_work\jwt.key" -Force -ErrorAction SilentlyContinue
-          Write-Host "✅ Workspace cleaned successfully!"
+          Write-Host "Workspace cleaned successfully!"
