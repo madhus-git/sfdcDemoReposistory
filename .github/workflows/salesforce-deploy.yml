@@ -31,20 +31,20 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
-          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Host "Git not found. Installing via winget..."
-              try {
-                  winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
-                  $gitPath = "C:\Program Files\Git\cmd"
-                  if (Test-Path $gitPath) {
-                      Write-Host "Adding Git to PATH..."
-                      echo "PATH=$gitPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-                  } else {
-                      Write-Error "Git installation failed. Please verify runner permissions."
-                      exit 1
-                  }
-              } catch {
-                  Write-Error "Git installation failed: $($_.Exception.Message)"
+          $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+          if (-not $gitCmd) {
+              Write-Host "Git not found. Downloading Git installer..."
+              $gitInstaller = "$env:TEMP\Git-2.42.0-64-bit.exe"
+              Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/download/v2.42.0.windows.1/Git-2.42.0-64-bit.exe" -OutFile $gitInstaller
+              Write-Host "Installing Git silently..."
+              Start-Process -FilePath $gitInstaller -ArgumentList "/VERYSILENT", "/NORESTART", "/NOCANCEL" -Wait
+              Remove-Item $gitInstaller -Force
+              $gitPath = "C:\Program Files\Git\cmd"
+              if (Test-Path $gitPath) {
+                  Write-Host "Adding Git to PATH..."
+                  echo "PATH=$gitPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              } else {
+                  Write-Error "Git installation failed. Please verify runner permissions."
                   exit 1
               }
           } else {
