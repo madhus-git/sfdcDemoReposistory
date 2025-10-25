@@ -112,31 +112,28 @@ jobs:
           $htmlReport = "${{ steps.sca.outputs.report }}"
           $nexusPath = "$projectName/$branchName/$buildNumber"
           $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
-
-          Write-Host "Uploading report to Nexus..."
+          $filePath = "html-report\$htmlReport"
           $maxRetries = 3
           $delay = 5
           $attempt = 1
           $success = $false
 
+          $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
+
           while (-not $success -and $attempt -le $maxRetries) {
               Write-Host "Attempt ${attempt} of ${maxRetries}: Uploading ${htmlReport} ..."
               try {
-                  # Use the real cURL binary to avoid PowerShell alias issues
-                  $response = & curl.exe -s -o $null -w "%{http_code}" `
-                      -u "$env:NEXUS_USER`:$env:NEXUS_PASS" `
-                      --upload-file "html-report\${htmlReport}" `
-                      "${url}"
-                  if ($response -eq "201" -or $response -eq "200") {
-                      Write-Host "Successfully uploaded report to Nexus at ${url}"
+                  $response = Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
+                  if ($response.StatusCode -eq 201 -or $response.StatusCode -eq 200) {
+                      Write-Host "✅ Successfully uploaded report to Nexus at ${url}"
                       $success = $true
                   } else {
-                      Write-Warning "Upload failed with HTTP code: ${response}"
+                      Write-Warning "Upload failed with HTTP code: $($response.StatusCode)"
                       if ($attempt -lt $maxRetries) {
                           Write-Host "Retrying in ${delay} seconds..."
                           Start-Sleep -Seconds $delay
-                          $delay *= 2  # exponential backoff
-                    }
+                          $delay *= 2
+                      }
                   }
               } catch {
                   Write-Warning "Error during upload: $($_.Exception.Message)"
@@ -148,10 +145,11 @@ jobs:
               }
               $attempt++
           }
+
           if (-not $success) {
-              Write-Error "Failed to upload report to Nexus after ${maxRetries} attempts."
+              Write-Error "❌ Failed to upload report to Nexus after ${maxRetries} attempts."
               exit 1
-          }                          
+          }
 
       # ======================
       # 6. Pre-Check Salesforce Credentials
