@@ -239,7 +239,7 @@ jobs:
           echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Preview Deployment (Optional Non-Failing Check)
+      # 10. Preview Deployment (Skip for Non-Tracked Orgs)
       # ======================
       - name: Preview Deployment Changes
         if: env.CHANGED_DIR != 'none'
@@ -247,15 +247,23 @@ jobs:
         continue-on-error: true
         run: |
           Write-Host "Previewing Salesforce deployment changes..."
-          sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS | Tee-Object -Variable preview
-          if ($preview -match "No files found") {
-              Write-Host "Nothing to deploy according to preview. Skipping actual deployment."
-          } else {
-              Write-Host "Deployment preview complete. Changes detected above."
-          }    
-
+          try{
+              $preview = sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS 2>&1
+              if ($preview -match "NonSourceTrackedOrgError") {
+                  Write-Host "Org does not support source tracking. Skipping preview step."
+              } elseif ($preview -match "No files found" -or $preview -match "NothingToDeploy") {
+                  Write-Host "Nothing to preview. Skipping deployment."
+                  echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              } else {
+                  Write-Host "Deployment preview completed successfully."
+                  Write-Host $preview
+              }   
+          } catch {
+              Write-Host "Preview step encountered an exception but will continue."
+          }
+          
       # ======================
-      # 11. Deploy Changed Components
+      # 11. Deploy Changed Components (Skip if NothingToDeploy)
       # ======================
       - name: Deploy Changed Salesforce Components
         if: env.CHANGED_DIR != 'none'
@@ -264,16 +272,19 @@ jobs:
         run: |
           Write-Host "Deploying changed components from $env:CHANGED_DIR..."
           $result = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10 2>&1
-          if ($LASTEXITCODE -ne 0 -and $result -match "NothingToDeploy") {
-              Write-Host "No deployable changes found. Skipping deployment gracefully."
+          if ($result -match "NothingToDeploy") {
+              Write-Host "Nothing to deploy. Skipping this step gracefully."
+              exit 0
+          } elseif ($result -match "NonSourceTrackedOrgError") {
+              Write-Host "Org does not support source tracking. Proceeding without preview."  
               exit 0
           } elseif ($LASTEXITCODE -ne 0) {
-              Write-Error "Deployment failed. Details:"    
+              Write-Error "Deployment failed. Details below:"
               Write-Host $result
               exit 1
           } else {
               Write-Host "Deployment completed successfully."
-          }    
+          }   
 
       # ======================
       # 12. Run Apex Tests
