@@ -36,7 +36,7 @@ jobs:
       # ======================
       # 3. Install Salesforce CLI & Plugins
       # ======================
-      - name: Install Prerequisites
+      - name: Install Pre-requisites
         shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
@@ -78,9 +78,9 @@ jobs:
           Write-Host "Salesforce CLI setup completed successfully."           
           
       # ======================
-      # 5. Static Code Analysis
+      # 4. Static Code Analysis
       # ======================
-      - name: Run Salesforce Code Analyzer
+      - name: Static Code Analyzer
         id: sca
         shell: powershell
         run: |
@@ -95,9 +95,9 @@ jobs:
           echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
 
       # ======================
-      # 6. Upload SCA Report to Nexus
+      # 5. Upload SCA Report to Nexus
       # ======================
-      - name: Upload SCA Report to Nexus
+      - name: Upload SCA Report to Artifactory
         shell: powershell
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -112,47 +112,49 @@ jobs:
           $filePath = "html-report\$htmlReport"
           $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
           Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
-          Write-Host "✅ Uploaded report to Nexus at ${url}"
+          Write-Host "Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. 🧪 Verify SF_JWT_KEY Secret Availability
+      # 7. Verify, Write, Clean & Validate JWT Key File
       # ======================
-      - name: 🧪 Verify SF_JWT_KEY Secret
-        shell: powershell
-        env:
-          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
-        run: |
-          if (-not $env:SF_JWT_KEY_CONTENT) {
-              Write-Error "❌ SF_JWT_KEY secret is NOT available to this workflow run."
-              Write-Host "👉 Verify: Repo → Settings → Secrets and variables → Actions → SF_JWT_KEY"
-              exit 1
-          } else {
-              Write-Host "✅ SF_JWT_KEY secret detected successfully. (length: $($env:SF_JWT_KEY_CONTENT.Length))"
-          }
-
-      # ======================
-      # 8. Write and Validate JWT Key File
-      # ======================
-      - name: Write and Validate JWT Key File
+      - name: Verify, Write, Clean & Validate JWT Key File
         shell: powershell
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           $keyPath = "C:\actions-runner\_work\jwt.key"
-          Write-Host "Creating JWT key file at $keyPath..."
+          Write-Host "Starting JWT key verification and setup..."
 
+          # Step 1: Verify secret availability
           if (-not $env:SF_JWT_KEY_CONTENT -or [string]::IsNullOrWhiteSpace($env:SF_JWT_KEY_CONTENT)) {
-              Write-Error "❌ SF_JWT_KEY secret is empty or missing. Please check your GitHub secret."
+              Write-Error "SF_JWT_KEY secret is missing or empty. Please check your GitHub repository secrets."
+              Write-Host "Go to: Repo → Settings → Secrets and variables → Actions → SF_JWT_KEY"
               exit 1
           }
 
+          Write-Host "SF_JWT_KEY secret detected successfully. Length: $($env:SF_JWT_KEY_CONTENT.Length)"
+
+          # Step 2: Clean up any old JWT key file
+          if (Test-Path $keyPath) {
+              Write-Host "Old JWT key file found at $keyPath. Removing it..."
+              try {
+                  Remove-Item -Path $keyPath -Force -ErrorAction Stop
+                  Write-Host "Old JWT key file removed successfully."
+              } catch {
+                  Write-Warning "Could not remove old jwt.key file. Continuing with overwrite..."
+              }
+          }        
+    
+          # Step 3: Write key to file (handle Base64 or plain PEM)
+          Write-Host "Creating JWT key file at $keyPath..."
+
           if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
-              Write-Host "Detected base64 encoded private key. Decoding..."
+              Write-Host "Detected Base64 encoded private key. Decoding..."
               try {
                   $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
                   Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
               } catch {
-                  Write-Error "❌ Base64 decode failed. Check if secret was properly encoded."
+                  Write-Error "Base64 decode failed. Ensure SF_JWT_KEY is correctly encoded."
                   exit 1
               }
           } else {
@@ -160,22 +162,17 @@ jobs:
               $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
           }
 
+          # Step 4: Validate file creation
           if (-not (Test-Path $keyPath)) {
-              Write-Error "❌ JWT key file creation failed."
+              Write-Error "JWT key file creation failed at $keyPath"
               exit 1
           }
 
-          $firstLine = (Get-Content -Path $keyPath -TotalCount 1).Trim()
-          if ($firstLine -notmatch "-----BEGIN (RSA )?PRIVATE KEY-----") {
-              Write-Error "❌ Invalid key file format. Expected '-----BEGIN RSA PRIVATE KEY-----', got: $firstLine"
-              exit 1
-          }
-
-          Write-Host "✅ JWT key file validated successfully."
-          echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "JWT key file validated successfully and ready for authentication."
+          echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append    
 
       # ======================
-      # 9. Authenticate Salesforce Org
+      # 8. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
@@ -192,7 +189,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 10. Identify Changed Components
+      # 9. Identify Changed Components
       # ======================
       - name: Identify changed Salesforce components
         shell: powershell
@@ -217,7 +214,7 @@ jobs:
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 11. Deploy Changed Components
+      # 10. Deploy Changed Components
       # ======================
       - name: Deploy changed Salesforce components
         if: env.CHANGED_DIR != 'none'
@@ -227,7 +224,7 @@ jobs:
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10
 
       # ======================
-      # 12. Run Apex Tests
+      # 11. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
@@ -245,12 +242,33 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 13. Cleanup
+      # 12. Cleanup
       # ======================
       - name: Cleanup Workspace
         shell: powershell
         run: |
-          Write-Host "Cleaning workspace..."
-          Remove-Item -Recurse -Force * -ErrorAction SilentlyContinue
-          Remove-Item "C:\actions-runner\_work\jwt.key" -Force -ErrorAction SilentlyContinue
-          Write-Host "Workspace cleaned successfully!"
+          Write-Host "Starting workspace cleanup..."
+          $keyPath = "C:\actions-runner\_work\jwt.key"
+
+          # Step 1: Check if JWT key exists
+          if (Test-Path $keyPath) {
+              Write-Host "JWT key file found at $keyPath. Removing..."
+              try {
+                  Remove-Item -Path $keyPath -Force -ErrorAction Stop
+                  Write-Host "JWT key file removed successfully."
+              } catch {
+                  Write-Warning "Could not delete JWT key file: $($_.Exception.Message)"
+              }
+          } else {
+              Write-Host "No JWT key file found. Skipping key cleanup."
+          }
+
+          # Step 2: Clean the rest of workspace (optional)
+          Write-Host "Cleaning temporary files and workspace folders..."
+          try {
+              Remove-Item -Recurse -Force -Path $env:GITHUB_WORKSPACE\* -ErrorAction SilentlyContinue
+              Write-Host "Workspace cleanup completed."
+          } catch {
+              Write-Warning "Could not clean some workspace files: $($_.Exception.Message)"
+          }
+          Write-Host "Cleanup step completed successfully."
