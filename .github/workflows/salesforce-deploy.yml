@@ -194,23 +194,40 @@ jobs:
       - name: Identify changed Salesforce components
         shell: powershell
         run: |
-          Write-Host "Identifying changed Salesforce components..."
-          git fetch origin main
-          $changedFiles = git diff --name-only origin/main...HEAD
-          if (-not $changedFiles) { Write-Host "No changes detected."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
-          $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
-          if (-not $metadataFiles) { Write-Host "No Salesforce metadata changes."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
+          Write-Host "Identifying changed Salesforce components on branch: $env:GITHUB_REF_NAME"
 
+          # Step 1: Fetch latest commits for current branch
+          git fetch origin $env:GITHUB_REF_NAME --depth=2
+
+          # Step 2: Determine changed files between last commit and previous commit on same branch
+          $changedFiles = git diff --name-only HEAD~1 HEAD
+          if (-not $changedFiles) {
+              Write-Host "No file changes detected in the latest commit on branch $env:GITHUB_REF_NAME."
+              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              exit 0
+          }
+
+          # Step 3: Filter for Salesforce metadata (force-app/*)
+          $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
+          if (-not $metadataFiles) {
+              Write-Host "No Salesforce metadata changes found in this commit."
+              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              exit 0
+          }
+
+          # Step 4: Create deployment directory for changed components
           $tempDeployDir = "changed-deploy"
           if (Test-Path $tempDeployDir) { Remove-Item -Recurse -Force $tempDeployDir }
           New-Item -ItemType Directory -Path $tempDeployDir | Out-Null
+
           foreach ($file in $metadataFiles) {
               $dest = Join-Path $tempDeployDir $file
               $destDir = Split-Path $dest
               if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir | Out-Null }
-              Copy-Item $file $dest
-          }
-          Write-Host "Changed components copied to $tempDeployDir"
+              Copy-Item $file $dest -Force
+          }        
+
+          Write-Host "Changed Salesforce components copied to $tempDeployDir"
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
