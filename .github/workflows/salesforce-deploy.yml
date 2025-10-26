@@ -109,7 +109,22 @@ jobs:
           Write-Host "✅ Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. Write & Validate JWT Key File (FIXED)
+      # 7. Debug Secret Access
+      # ======================
+      - name: Debug Secret Access
+        shell: powershell
+        env:
+          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY_CONTENT }}
+        run: |
+          if (-not $env:SF_JWT_KEY_CONTENT) {
+              Write-Error "❌ Secret not available to runner. Check repository secrets."
+              exit 1
+          } else {
+              Write-Host "✅ Secret is loaded successfully. (length: $($env:SF_JWT_KEY_CONTENT.Length))"
+          }
+
+      # ======================
+      # 8. Write and Validate JWT Key File (Improved)
       # ======================
       - name: Write and Validate JWT Key File
         shell: powershell
@@ -119,28 +134,34 @@ jobs:
           $keyPath = "C:\actions-runner\_work\jwt.key"
           Write-Host "Creating JWT key file at $keyPath..."
 
-          if (-not $env:SF_JWT_KEY_CONTENT) {
+          # Check for empty secret
+          if (-not $env:SF_JWT_KEY_CONTENT -or [string]::IsNullOrWhiteSpace($env:SF_JWT_KEY_CONTENT)) {
               Write-Error "❌ SF_JWT_KEY_CONTENT secret is empty or missing. Please check your GitHub secret."
               exit 1
           }
 
-          # Detect if the key is base64 encoded or plain text
+          # Detect Base64 vs Plain
           if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
-              Write-Host "Detected base64 encoded key. Decoding..."
-              $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
-              Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
+              Write-Host "Detected base64 encoded private key. Decoding..."
+              try {
+                  $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
+                  Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
+              } catch {
+                  Write-Error "❌ Base64 decode failed. Check if secret was properly encoded."
+                  exit 1
+              }
           } else {
-              Write-Host "Writing plain-text RSA key..."
+              Write-Host "Detected plain-text PEM key. Writing as-is..."
               $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
           }
 
-          # Validate key file
+          # Validate
           if (-not (Test-Path $keyPath)) {
               Write-Error "❌ JWT key file creation failed."
               exit 1
           }
 
-          $firstLine = Get-Content -Path $keyPath -TotalCount 1
+          $firstLine = (Get-Content -Path $keyPath -TotalCount 1).Trim()
           if ($firstLine -notmatch "-----BEGIN (RSA )?PRIVATE KEY-----") {
               Write-Error "❌ Invalid key file format. Expected '-----BEGIN RSA PRIVATE KEY-----', got: $firstLine"
               exit 1
@@ -148,22 +169,6 @@ jobs:
 
           Write-Host "✅ JWT key file validated successfully."
           echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      # ======================
-      # 8. Verify JWT File Content (DEBUG)
-      # ======================
-      - name: Verify JWT Key File
-        shell: powershell
-        run: |
-          $path = "C:\actions-runner\_work\jwt.key"
-          if (Test-Path $path) {
-              Write-Host "✅ JWT key file exists."
-              Write-Host "First 3 lines of key file:"
-              Get-Content -Path $path -TotalCount 3
-          } else {
-              Write-Error "JWT key file missing."
-              exit 1
-          }
 
       # ======================
       # 9. Authenticate Salesforce Org
