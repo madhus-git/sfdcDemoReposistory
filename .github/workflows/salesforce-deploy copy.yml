@@ -5,9 +5,7 @@ on:
   push:
     branches:
       - main
-      - githubcicd
-      - feature/**
-
+      
 jobs:
   salesforce-deploy:
     name: Salesforce CI/CD
@@ -25,7 +23,21 @@ jobs:
         uses: actions/checkout@v4
 
       # ======================
-      # 2. Cache Salesforce CLI
+      # 2. Verify Git Installation
+      # ======================
+      - name: Verify Git Installation
+        shell: powershell
+        run: |
+          Write-Host "Verifying Git installation..."
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+              Write-Error "Git is not installed or not in PATH. Install Git manually on this self-hosted runner."
+              exit 1
+          } else {
+              Write-Host "✅ Git is installed."
+          }
+
+      # ======================
+      # 3. Cache Salesforce CLI
       # ======================
       - name: Cache Salesforce CLI
         uses: actions/cache@v4
@@ -34,53 +46,33 @@ jobs:
           key: ${{ runner.os }}-sfdx-cli
 
       # ======================
-      # 3. Install Salesforce CLI & Plugins
+      # 4. Install Salesforce CLI & Plugins
       # ======================
-      - name: Install Pre-requisites
+      - name: Install Salesforce CLI and Scanner
         shell: powershell
         run: |
-          Write-Host "Verifying Git installation..."
-          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Error "Git is not installed or not in PATH. Please install Git manually on this runner."
-              exit 1
-          } else {
-              Write-Host "Git is installed and available in PATH."
-              git --version
-          }
-
-          Write-Host "Checking npm installation..."
+          Write-Host "Installing Salesforce CLI and Scanner Plugin..."
           if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-              Write-Error "npm is not installed. Please install Node.js before continuing."
+              Write-Error "npm is not installed. Install Node.js first."
               exit 1
-          } else {
-              Write-Host "npm is installed. Version:"
-              npm --version
           }
 
-          Write-Host "Installing or Updating Salesforce CLI..."
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+              Write-Host "Installing Salesforce CLI..."
               npm install --global @salesforce/cli@latest
               $npmGlobalPath = (npm root -g).Replace('node_modules', '')
               echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              Write-Host "Salesforce CLI installed successfully."
           } else {
-              Write-Host "Salesforce CLI already present. Updating to latest..."
-              npm update --global @salesforce/cli
+              Write-Host "Salesforce CLI already installed."
           }
 
-          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
-          try{
-              sf plugins install @salesforce/sfdx-scanner@latest
-              Write-Host "Scanner plugin installed or updated."
-          } catch {
-              Write-Warning "Scanner plugin may already exist, continuing..."
-          }
-          Write-Host "Salesforce CLI setup completed successfully."           
-          
+          Write-Host "Installing/updating Scanner plugin..."
+          try { sf plugins install @salesforce/sfdx-scanner@latest } catch { Write-Host "Plugin already installed." }
+
       # ======================
-      # 4. Static Code Analysis
+      # 5. Static Code Analysis
       # ======================
-      - name: Static Code Analyzer
+      - name: Run Salesforce Code Analyzer
         id: sca
         shell: powershell
         run: |
@@ -95,9 +87,9 @@ jobs:
           echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
 
       # ======================
-      # 5. Upload SCA Report to Nexus
+      # 6. Upload SCA Report to Nexus
       # ======================
-      - name: Upload SCA Report to Artifactory
+      - name: Upload SCA Report to Nexus
         shell: powershell
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
@@ -112,49 +104,47 @@ jobs:
           $filePath = "html-report\$htmlReport"
           $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
           Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
-          Write-Host "Uploaded report to Nexus at ${url}"
+          Write-Host "✅ Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. Verify, Write, Clean & Validate JWT Key File
+      # 7. 🧪 Verify SF_JWT_KEY Secret Availability
       # ======================
-      - name: Verify, Write, Clean & Validate JWT Key File
+      - name: 🧪 Verify SF_JWT_KEY Secret
+        shell: powershell
+        env:
+          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          if (-not $env:SF_JWT_KEY_CONTENT) {
+              Write-Error "❌ SF_JWT_KEY secret is NOT available to this workflow run."
+              Write-Host "👉 Verify: Repo → Settings → Secrets and variables → Actions → SF_JWT_KEY"
+              exit 1
+          } else {
+              Write-Host "✅ SF_JWT_KEY secret detected successfully. (length: $($env:SF_JWT_KEY_CONTENT.Length))"
+          }
+
+      # ======================
+      # 8. Write and Validate JWT Key File
+      # ======================
+      - name: Write and Validate JWT Key File
         shell: powershell
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           $keyPath = "C:\actions-runner\_work\jwt.key"
-          Write-Host "Starting JWT key verification and setup..."
+          Write-Host "Creating JWT key file at $keyPath..."
 
-          # Step 1: Verify secret availability
           if (-not $env:SF_JWT_KEY_CONTENT -or [string]::IsNullOrWhiteSpace($env:SF_JWT_KEY_CONTENT)) {
-              Write-Error "SF_JWT_KEY secret is missing or empty. Please check your GitHub repository secrets."
-              Write-Host "Go to: Repo → Settings → Secrets and variables → Actions → SF_JWT_KEY"
+              Write-Error "❌ SF_JWT_KEY secret is empty or missing. Please check your GitHub secret."
               exit 1
           }
 
-          Write-Host "SF_JWT_KEY secret detected successfully. Length: $($env:SF_JWT_KEY_CONTENT.Length)"
-
-          # Step 2: Clean up any old JWT key file
-          if (Test-Path $keyPath) {
-              Write-Host "Old JWT key file found at $keyPath. Removing it..."
-              try {
-                  Remove-Item -Path $keyPath -Force -ErrorAction Stop
-                  Write-Host "Old JWT key file removed successfully."
-              } catch {
-                  Write-Warning "Could not remove old jwt.key file. Continuing with overwrite..."
-              }
-          }        
-    
-          # Step 3: Write key to file (handle Base64 or plain PEM)
-          Write-Host "Creating JWT key file at $keyPath..."
-
           if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
-              Write-Host "Detected Base64 encoded private key. Decoding..."
+              Write-Host "Detected base64 encoded private key. Decoding..."
               try {
                   $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
                   Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
               } catch {
-                  Write-Error "Base64 decode failed. Ensure SF_JWT_KEY is correctly encoded."
+                  Write-Error "❌ Base64 decode failed. Check if secret was properly encoded."
                   exit 1
               }
           } else {
@@ -162,17 +152,22 @@ jobs:
               $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
           }
 
-          # Step 4: Validate file creation
           if (-not (Test-Path $keyPath)) {
-              Write-Error "JWT key file creation failed at $keyPath"
+              Write-Error "❌ JWT key file creation failed."
               exit 1
           }
 
-          Write-Host "JWT key file validated successfully and ready for authentication."
-          echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append    
+          $firstLine = (Get-Content -Path $keyPath -TotalCount 1).Trim()
+          if ($firstLine -notmatch "-----BEGIN (RSA )?PRIVATE KEY-----") {
+              Write-Error "❌ Invalid key file format. Expected '-----BEGIN RSA PRIVATE KEY-----', got: $firstLine"
+              exit 1
+          }
+
+          Write-Host "✅ JWT key file validated successfully."
+          echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # ======================
-      # 8. Authenticate Salesforce Org
+      # 9. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
@@ -189,51 +184,34 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify Changed Components
+      # 10. Identify Changed Components
       # ======================
       - name: Identify changed Salesforce components
         shell: powershell
         run: |
-          Write-Host "Identifying changed Salesforce components on branch: $env:GITHUB_REF_NAME"
-
-          # Step 1: Fetch latest commits for current branch
-          git fetch origin $env:GITHUB_REF_NAME --depth=2
-
-          # Step 2: Determine changed files between last commit and previous commit on same branch
-          $changedFiles = git diff --name-only HEAD~1 HEAD
-          if (-not $changedFiles) {
-              Write-Host "No file changes detected in the latest commit on branch $env:GITHUB_REF_NAME."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
-              exit 0
-          }
-
-          # Step 3: Filter for Salesforce metadata (force-app/*)
+          Write-Host "Identifying changed Salesforce components..."
+          git fetch origin main
+          $changedFiles = git diff --name-only origin/main...HEAD
+          if (-not $changedFiles) { Write-Host "No changes detected."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
           $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
-          if (-not $metadataFiles) {
-              Write-Host "No Salesforce metadata changes found in this commit."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
-              exit 0
-          }
+          if (-not $metadataFiles) { Write-Host "No Salesforce metadata changes."; echo "CHANGED_DIR=none" >> $env:GITHUB_ENV; exit 0 }
 
-          # Step 4: Create deployment directory for changed components
           $tempDeployDir = "changed-deploy"
           if (Test-Path $tempDeployDir) { Remove-Item -Recurse -Force $tempDeployDir }
           New-Item -ItemType Directory -Path $tempDeployDir | Out-Null
-
           foreach ($file in $metadataFiles) {
               $dest = Join-Path $tempDeployDir $file
               $destDir = Split-Path $dest
               if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir | Out-Null }
-              Copy-Item $file $dest -Force
-          }        
-
-          Write-Host "Changed Salesforce components copied to $tempDeployDir"
+              Copy-Item $file $dest
+          }
+          Write-Host "Changed components copied to $tempDeployDir"
           echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy Changed Components
+      # 11. Deploy Changed Components
       # ======================
-      - name: Deploy changed components
+      - name: Deploy changed Salesforce components
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
@@ -241,7 +219,7 @@ jobs:
           sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10
 
       # ======================
-      # 11. Run Apex Tests
+      # 12. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
@@ -259,33 +237,12 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 12. Cleanup
+      # 13. Cleanup
       # ======================
       - name: Cleanup Workspace
         shell: powershell
         run: |
-          Write-Host "Starting workspace cleanup..."
-          $keyPath = "C:\actions-runner\_work\jwt.key"
-
-          # Step 1: Check if JWT key exists
-          if (Test-Path $keyPath) {
-              Write-Host "JWT key file found at $keyPath. Removing..."
-              try {
-                  Remove-Item -Path $keyPath -Force -ErrorAction Stop
-                  Write-Host "JWT key file removed successfully."
-              } catch {
-                  Write-Warning "Could not delete JWT key file: $($_.Exception.Message)"
-              }
-          } else {
-              Write-Host "No JWT key file found. Skipping key cleanup."
-          }
-
-          # Step 2: Clean the rest of workspace (optional)
-          Write-Host "Cleaning temporary files and workspace folders..."
-          try {
-              Remove-Item -Recurse -Force -Path $env:GITHUB_WORKSPACE\* -ErrorAction SilentlyContinue
-              Write-Host "Workspace cleanup completed."
-          } catch {
-              Write-Warning "Could not clean some workspace files: $($_.Exception.Message)"
-          }
-          Write-Host "Cleanup step completed successfully."
+          Write-Host "Cleaning workspace..."
+          Remove-Item -Recurse -Force * -ErrorAction SilentlyContinue
+          Remove-Item "C:\actions-runner\_work\jwt.key" -Force -ErrorAction SilentlyContinue
+          Write-Host "Workspace cleaned successfully!"
