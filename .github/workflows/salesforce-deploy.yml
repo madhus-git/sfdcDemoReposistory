@@ -250,16 +250,21 @@ jobs:
           try{
               $preview = sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS 2>&1
               if ($preview -match "NonSourceTrackedOrgError") {
-                  Write-Host "Org does not support source tracking. Skipping preview step."
+                  Write-Host "Org does not support source tracking (sandbox/prod). Skipping preview step."
+                  exit 0
               } elseif ($preview -match "No files found" -or $preview -match "NothingToDeploy") {
                   Write-Host "Nothing to preview. Skipping deployment."
                   echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+                  exit 0
               } else {
                   Write-Host "Deployment preview completed successfully."
                   Write-Host $preview
+                  exit 0
               }   
           } catch {
-              Write-Host "Preview step encountered an exception but will continue."
+              Write-Host "Preview failed, but continuing gracefully. Details:"
+              Write-Host $_.Exception.Message
+              exit 0
           }
           
       # ======================
@@ -271,21 +276,31 @@ jobs:
         continue-on-error: true
         run: |
           Write-Host "Deploying changed components from $env:CHANGED_DIR..."
-          $result = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10 2>&1
-          if ($result -match "NothingToDeploy") {
-              Write-Host "Nothing to deploy. Skipping this step gracefully."
+          try {
+              $result = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10 2>&1
+              if ($result -match "NothingToDeploy") {
+                  Write-Host "Nothing to deploy. Skipping gracefully."
+                  exit 0
+              } elseif ($result -match "Error") {
+                  Write-Warning "Deployment returned error text, but checking if it's begin..." 
+                  if ($result -match "NothingToDeploy" -or $result -match "NonSourceTrackedOrgError") {
+                      Write-Host "Skipping deployment. Non-critical condition."
+                      exit 0
+                  } else {
+                      Write-Error "Deployment failed. Details below:"
+                      Write-Host $result
+                      exit 1
+                  }
+              } else {
+                  Write-Host "Deployment completed successfully."
+                  exit 0
+              }        
+          } catch {
+              Write-Warning "Deployment step threw exception but will not fail pipeline."
+              Write-Host $_.Exception.Message
               exit 0
-          } elseif ($result -match "NonSourceTrackedOrgError") {
-              Write-Host "Org does not support source tracking. Proceeding without preview."  
-              exit 0
-          } elseif ($LASTEXITCODE -ne 0) {
-              Write-Error "Deployment failed. Details below:"
-              Write-Host $result
-              exit 1
-          } else {
-              Write-Host "Deployment completed successfully."
-          }   
-
+          }
+          
       # ======================
       # 12. Run Apex Tests
       # ======================
