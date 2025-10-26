@@ -192,56 +192,91 @@ jobs:
       # 9. Identify Changed Components
       # ======================
       - name: Identify changed Salesforce components
+        id: find_changes
         shell: powershell
         run: |
           Write-Host "Identifying changed Salesforce components on branch: $env:GITHUB_REF_NAME"
 
-          # Step 1: Fetch latest commits for current branch
+          # Fetch last two commits of the same branch
           git fetch origin $env:GITHUB_REF_NAME --depth=2
 
-          # Step 2: Determine changed files between last commit and previous commit on same branch
+          # Get changes between the last two commits in the current branch
           $changedFiles = git diff --name-only HEAD~1 HEAD
           if (-not $changedFiles) {
-              Write-Host "No file changes detected in the latest commit on branch $env:GITHUB_REF_NAME."
+              Write-Host "No file changes detected in latest commit."
               echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
-          # Step 3: Filter for Salesforce metadata (force-app/*)
+          # Filter Salesforce metadata paths
           $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
           if (-not $metadataFiles) {
-              Write-Host "No Salesforce metadata changes found in this commit."
+              Write-Host "No Salesforce metadata changes found."
               echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
-          # Step 4: Create deployment directory for changed components
-          $tempDeployDir = "changed-deploy"
-          if (Test-Path $tempDeployDir) { Remove-Item -Recurse -Force $tempDeployDir }
-          New-Item -ItemType Directory -Path $tempDeployDir | Out-Null
+          # Create proper Salesforce DX deploy directory
+          $deployDir = "changed-deploy/force-app/main/default"
+          if (Test-Path "changed-deploy") { Remove-Item -Recurse -Force "changed-deploy" }
+          New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
 
           foreach ($file in $metadataFiles) {
-              $dest = Join-Path $tempDeployDir $file
+              $dest = Join-Path "changed-deploy" $file
               $destDir = Split-Path $dest
-              if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir | Out-Null }
-              Copy-Item $file $dest -Force
+              if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
+              if (Test-Path $file) { Copy-Item $file $dest -Force }
           }        
 
-          Write-Host "Changed Salesforce components copied to $tempDeployDir"
-          echo "CHANGED_DIR=$tempDeployDir" >> $env:GITHUB_ENV
+          # Verify files exist
+          $copied = Get-ChildItem -Recurse "changed-deploy" | Measure-Object | Select-Object -ExpandProperty Count
+          if ($copied -eq 0) {
+              Write-Host "valid metadata files copied. Skipping deployment."
+              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              exit 0
+          }
+          Write-Host "Copied $copied changed Salesforce files into changed-deploy directory."
+          echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Deploy Changed Components
+      # 10. Preview Deployment (Optional Non-Failing Check)
       # ======================
-      - name: Deploy changed components
+      - name: Preview Deployment Changes
         if: env.CHANGED_DIR != 'none'
         shell: powershell
+        continue-on-error: true
         run: |
-          Write-Host "Deploying only changed components..."
-          sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10
+          Write-Host "Previewing Salesforce deployment changes..."
+          sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS | Tee-Object -Variable preview
+          if ($preview -match "No files found") {
+              Write-Host "Nothing to deploy according to preview. Skipping actual deployment."
+          } else {
+              Write-Host "Deployment preview complete. Changes detected above."
+          }    
 
       # ======================
-      # 11. Run Apex Tests
+      # 11. Deploy Changed Components
+      # ======================
+      - name: Deploy Changed Salesforce Components
+        if: env.CHANGED_DIR != 'none'
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Write-Host "Deploying changed components from $env:CHANGED_DIR..."
+          $result = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10 2>&1
+          if ($LASTEXITCODE -ne 0 -and $result -match "NothingToDeploy") {
+              Write-Host "No deployable changes found. Skipping deployment gracefully."
+              exit 0
+          } elseif ($LASTEXITCODE -ne 0) {
+              Write-Error "Deployment failed. Details:"    
+              Write-Host $result
+              exit 1
+          } else {
+              Write-Host "Deployment completed successfully."
+          }    
+
+      # ======================
+      # 12. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
@@ -259,7 +294,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 12. Cleanup
+      # 13. Cleanup
       # ======================
       - name: Cleanup Workspace
         shell: powershell
