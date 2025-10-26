@@ -109,38 +109,37 @@ jobs:
           Write-Host "✅ Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. Debug Secret Access
+      # 7. 🧪 Verify SF_JWT_KEY Secret Availability
       # ======================
-      - name: Debug Secret Access
+      - name: 🧪 Verify SF_JWT_KEY Secret
         shell: powershell
         env:
-          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY_CONTENT }}
+          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           if (-not $env:SF_JWT_KEY_CONTENT) {
-              Write-Error "❌ Secret not available to runner. Check repository secrets."
+              Write-Error "❌ SF_JWT_KEY secret is NOT available to this workflow run."
+              Write-Host "👉 Verify: Repo → Settings → Secrets and variables → Actions → SF_JWT_KEY"
               exit 1
           } else {
-              Write-Host "✅ Secret is loaded successfully. (length: $($env:SF_JWT_KEY_CONTENT.Length))"
+              Write-Host "✅ SF_JWT_KEY secret detected successfully. (length: $($env:SF_JWT_KEY_CONTENT.Length))"
           }
 
       # ======================
-      # 8. Write and Validate JWT Key File (Improved)
+      # 8. Write and Validate JWT Key File
       # ======================
       - name: Write and Validate JWT Key File
         shell: powershell
         env:
-          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY_CONTENT }}
+          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           $keyPath = "C:\actions-runner\_work\jwt.key"
           Write-Host "Creating JWT key file at $keyPath..."
 
-          # Check for empty secret
           if (-not $env:SF_JWT_KEY_CONTENT -or [string]::IsNullOrWhiteSpace($env:SF_JWT_KEY_CONTENT)) {
-              Write-Error "❌ SF_JWT_KEY_CONTENT secret is empty or missing. Please check your GitHub secret."
+              Write-Error "❌ SF_JWT_KEY secret is empty or missing. Please check your GitHub secret."
               exit 1
           }
 
-          # Detect Base64 vs Plain
           if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
               Write-Host "Detected base64 encoded private key. Decoding..."
               try {
@@ -155,7 +154,6 @@ jobs:
               $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
           }
 
-          # Validate
           if (-not (Test-Path $keyPath)) {
               Write-Error "❌ JWT key file creation failed."
               exit 1
