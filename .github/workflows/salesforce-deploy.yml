@@ -19,10 +19,12 @@ jobs:
 
     steps:
       # ======================
-      # 1. Checkout Repository
+      # 1. Checkout Repository (Fixed fetch-depth)
       # ======================
       - name: Checkout Source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensures full history so git diff works properly
 
       # ======================
       # 2. Cache Salesforce CLI
@@ -167,7 +169,6 @@ jobs:
         run: |
           Write-Host 'Identifying changed Salesforce metadata files...'
 
-          git fetch --prune --unshallow 2>$null
           $commitCount = (git rev-list --count HEAD)
 
           if ($commitCount -gt 1) {
@@ -196,17 +197,17 @@ jobs:
 
           $deployDir = 'changed-deploy/force-app/main/default'
           if (Test-Path 'changed-deploy') { Remove-Item -Recurse -Force 'changed-deploy' }
-              New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
 
-              foreach ($file in $metadataFiles) {
-                $dest = Join-Path 'changed-deploy' $file
-                $destDir = Split-Path $dest
-                if (-not (Test-Path $destDir)) {
-                    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-                }
-                if (Test-Path $file) {
-                    Copy-Item $file $dest -Force
-                }
+          foreach ($file in $metadataFiles) {
+              $dest = Join-Path 'changed-deploy' $file
+              $destDir = Split-Path $dest
+              if (-not (Test-Path $destDir)) {
+                  New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+              }
+              if (Test-Path $file) {
+                  Copy-Item $file $dest -Force
+              }
           }
 
           $copied = (Get-ChildItem -Recurse 'changed-deploy').Count
