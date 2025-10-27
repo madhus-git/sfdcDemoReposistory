@@ -240,29 +240,50 @@ jobs:
         shell: powershell
         run: |
           Write-Host 'Deploying changed metadata to Salesforce...'
-          $ErrorActionPreference = 'Continue'
+          $ErrorActionPreference = 'Stop'
 
           # --- Clean old CLI cache ---
-          $cacheDir = Join-Path $env:USERPROFILE '.sfdx'
+          $cacheDir = Join-Path $env:USERPROFILE '.sf'
           if (Test-Path $cacheDir) {
               Write-Host 'Cleaning old Salesforce CLI cache...'
               Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
           }
 
-          # --- Touch files to update timestamps ---
+          # --- Touch changed files to ensure Salesforce detects new timestamps ---
           Write-Host 'Touching changed files to refresh timestamps...'
           Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object {
               (Get-Item $_.FullName).LastWriteTime = Get-Date
           }
 
-          # --- First deployment attempt ---
-          Write-Host 'Starting deployment (classic sfdx deploy)...'
-          sfdx force:source:deploy -p "$env:CHANGED_DIR" -u $env:ORG_ALIAS -g -w 10
+          # --- Primary deploy ---
+          Write-Host 'Starting deployment...'
+          sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --wait 10 --verbose
           $exitCode = $LASTEXITCODE
 
           if ($exitCode -ne 0) {
-              Write-Warning "Deployment exited with code $exitCode. Retrying with forceoverwrite..."
-              sfdx force:source:deploy -p "$env:CHANGED_DIR" -u $env:ORG_ALIAS -g -w 10 -f
+              Write-Warning "Deployment exited with code $exitCode. Checking for NothingToDeploy..."
+              
+              $logFile = 'sf-deploy-log.txt'
+              sf project deploy preview --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --json > $logFile 2>&1
+              $logContent = Get-Content $logFile -Raw
+
+              if ($logContent -match 'NothingToDeploy') {
+                  Write-Host 'No changes detected by CLI — forcing redeploy via temporary copy...'
+                  $tempDir = 'redeploy-temp'
+                  if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
+                  Copy-Item "$env:CHANGED_DIR" $tempDir -Recurse
+                  
+                  # Update timestamps again to trigger CLI redeploy
+                  Get-ChildItem -Recurse -File $tempDir | ForEach-Object {
+                      (Get-Item $_.FullName).LastWriteTime = Get-Date
+                  }
+
+                  sf project deploy start --source-dir $tempDir --target-org $env:ORG_ALIAS --ignore-conflicts --wait 10 --verbose
+              } else {
+                  Write-Error "Deployment failed — review sf-deploy-log.txt for details."
+                  Get-Content $logFile
+                  exit 1
+              }
           } else {
               Write-Host 'Deployment completed successfully.'
           }
