@@ -197,35 +197,36 @@ jobs:
         run: |
           Write-Host "Identifying changed Salesforce metadata files..."
 
-          # Determine commit range (handles new branches)
-          $baseCommit = (git rev-list --max-parents=0 HEAD | Select-Object -First 1)
+          # Fetch commit history safely
+          git fetch --prune --unshallow 2>$null
           $commitCount = (git rev-list --count HEAD)
+
           if ($commitCount -gt 1) {
               $changedFiles = git diff --name-only HEAD~1 HEAD
           } else {
-              Write-Host "This is the first commit. Using all files in force-app for initial deploy."
+              Write-Host "First commit detected — taking all files under force-app."
               $changedFiles = git ls-files "force-app/*"
           }
 
           if (-not $changedFiles) {
-              Write-Host "No file changes detected. Skipping deployment."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              Write-Host "No changes detected. Skipping deployment."
+              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
               exit 0
           }
 
-          # Filter only Salesforce metadata files (.cls, .xml, .trigger, etc.)
+          # Filter only valid Salesforce metadata files
           $metadataFiles = $changedFiles | Where-Object {
               ($_ -like "force-app/*") -and
-              ($_ -match "\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionSet|tab|layout)$")
+              ($_ -match "\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionset|tab|layout)$")
           }
 
           if (-not $metadataFiles) {
-              Write-Host "No deployable Salesforce metadata changes found."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              Write-Host "No deployable Salesforce metadata files detected."
+              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
               exit 0
           }
 
-          # Prepare deploy directory
+          # Prepare changed-deploy directory
           $deployDir = "changed-deploy/force-app/main/default"
           if (Test-Path "changed-deploy") { Remove-Item -Recurse -Force "changed-deploy" }
           New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
@@ -237,41 +238,53 @@ jobs:
               if (Test-Path $file) { Copy-Item $file $dest -Force }
           }
 
-          $copied = Get-ChildItem -Recurse "changed-deploy" | Measure-Object | Select-Object -ExpandProperty Count
+          $copied = (Get-ChildItem -Recurse "changed-deploy").Count
           if ($copied -eq 0) {
-              Write-Host "No valid files copied for deployment."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              Write-Host "No valid files copied. Skipping deployment."
+              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
               exit 0
           }
+
+          Write-Host "Copied $copied changed metadata files."
+          "CHANGED_DIR=changed-deploy/force-app/main/default" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       # ======================
       # 10. Preview Deployment
       # ======================
       - name: Preview Deployment Changes
-        if: env.CHANGED_DIR != 'none'
+        if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
         shell: powershell
         run: |
-          Write-Host "Previewing deployment changes..."
+          Write-Host "Previewing deployment changes from $env:CHANGED_DIR ..."
+          if (-not $env:CHANGED_DIR -or $env:CHANGED_DIR -eq 'none') {
+              Write-Host "No changed directory found. Skipping preview."
+              exit 0
+          }
           try {
-              sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS
+              sf project deploy preview --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS
           } catch {
-              Write-Warning "Preview skipped (Org may not support source tracking)."
+              Write-Warning "Preview failed or org doesn't support source tracking."
           }
           
       # ======================
       # 11. Deploy Changed Components
       # ======================
       - name: Deploy Changed Salesforce Components
-        if: env.CHANGED_DIR != 'none'
+        if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
         shell: powershell
         run: |
-          Write-Host "Deploying changed Salesforce metadata from $env:CHANGED_DIR ..."
-          $deployResult = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 15 --json
+          Write-Host "Deploying changed metadata from $env:CHANGED_DIR ..."
+          if (-not (Test-Path $env:CHANGED_DIR)) {
+              Write-Host "Deployment folder not found. Skipping deployment."
+              exit 0
+          }
+
+          $deployResult = sf project deploy start --target-org $env:ORG_ALIAS --source-dir "$env:CHANGED_DIR" --wait 15 --json
           if ($deployResult -match '"status": *"Failed"') {
-              Write-Error "Deployment failed."
+              Write-Error "Deployment failed. See above for details."
               exit 1
           }
-          Write-Host "Deployment completed successfully."   
+          Write-Host "Deployment completed successfully."  
           
       # ======================
       # 12. Run Apex Tests
