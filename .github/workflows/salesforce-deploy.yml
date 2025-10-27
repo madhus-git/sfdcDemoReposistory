@@ -195,28 +195,37 @@ jobs:
         id: find_changes
         shell: powershell
         run: |
-          Write-Host "Identifying changed Salesforce components on branch: $env:GITHUB_REF_NAME"
+          Write-Host "Identifying changed Salesforce metadata files..."
 
-          # Fetch last two commits of the same branch
-          git fetch origin $env:GITHUB_REF_NAME --depth=2
+          # Determine commit range (handles new branches)
+          $baseCommit = (git rev-list --max-parents=0 HEAD | Select-Object -First 1)
+          $commitCount = (git rev-list --count HEAD)
+          if ($commitCount -gt 1) {
+              $changedFiles = git diff --name-only HEAD~1 HEAD
+          else {
+              Write-Host "This is the first commit. Using all files in force-app for initial deploy."
+              $changedFiles = git ls-files "force-app/*"
+          }
 
-          # Get changes between the last two commits in the current branch
-          $changedFiles = git diff --name-only HEAD~1 HEAD
           if (-not $changedFiles) {
-              Write-Host "No file changes detected in latest commit."
+              Write-Host "No file changes detected. Skipping deployment."
               echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
-          # Filter Salesforce metadata paths
-          $metadataFiles = $changedFiles | Where-Object { $_ -like "force-app/*" }
+          # Filter only Salesforce metadata files (.cls, .xml, .trigger, etc.)
+          $metadataFiles = $changedFiles | Where-Object {
+              ($_ -like "force-app/*") -and
+              ($_ -match "\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionSet|tab|layout)$")
+          }
+
           if (-not $metadataFiles) {
-              Write-Host "No Salesforce metadata changes found."
+              Write-Host "No deployable Salesforce metadata changes found."
               echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
-          # Create proper Salesforce DX deploy directory
+          # Prepare deploy directory
           $deployDir = "changed-deploy/force-app/main/default"
           if (Test-Path "changed-deploy") { Remove-Item -Recurse -Force "changed-deploy" }
           New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
@@ -226,70 +235,43 @@ jobs:
               $destDir = Split-Path $dest
               if (-not (Test-Path $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
               if (Test-Path $file) { Copy-Item $file $dest -Force }
-          }        
+          }
 
-          # Verify files exist
           $copied = Get-ChildItem -Recurse "changed-deploy" | Measure-Object | Select-Object -ExpandProperty Count
           if ($copied -eq 0) {
-              Write-Host "valid metadata files copied. Skipping deployment."
+              Write-Host "No valid files copied for deployment."
               echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
-          Write-Host "Copied $copied changed Salesforce files into changed-deploy directory."
-          echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Preview Deployment (Skip for Non-Tracked Orgs)
+      # 10. Preview Deployment
       # ======================
       - name: Preview Deployment Changes
         if: env.CHANGED_DIR != 'none'
         shell: powershell
-        continue-on-error: true
         run: |
-          Write-Host "Previewing Salesforce deployment changes..."
-          try{
-              $preview = sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS 2>&1
-              if ($preview -match "NonSourceTrackedOrgError") {
-                  Write-Host "Org does not support source tracking (sandbox/prod). Skipping preview step."
-                  exit 0
-              } elseif ($preview -match "NothingToDeploy") {
-                  Write-Host "Nothing to preview. Skipping deployment."
-                  echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
-                  exit 0
-              } else {
-                  Write-Host "Deployment preview completed successfully."
-                  Write-Host $preview
-              }   
+          Write-Host "Previewing deployment changes..."
+          try {
+              sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS
           } catch {
-              Write-Host "Preview failed, but continuing gracefully."
-              Write-Host $_.Exception.Message
-              exit 0
+              Write-Warning "Preview skipped (Org may not support source tracking)."
           }
           
       # ======================
-      # 11. Deploy Changed Components (Skip if NothingToDeploy)
+      # 11. Deploy Changed Components
       # ======================
       - name: Deploy Changed Salesforce Components
         if: env.CHANGED_DIR != 'none'
         shell: powershell
-        continue-on-error: true
         run: |
-          Write-Host "Deploying changed components from $env:CHANGED_DIR..."
-          if (-not (Test-Path $env:CHANGED_DIR) -or ((Get-ChildItem -Recurse $env:CHANGED_DIR).Count -eq 0)) {
-              Write-Host "No deployable files found. Skipping deployment."
-              exit 0
-          }    
-          $result = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 10 2>&1
-          if ($result -match "NothingToDeploy") {
-              Write-Host "Nothing to deploy. Exiting gracefully."
-              exit 0
-          } elseif ($result -match "Error") {
-              Write-Error "Deployment failed. Details:"
-              Write-Host $result
+          Write-Host "Deploying changed Salesforce metadata from $env:CHANGED_DIR ..."
+          $deployResult = sf project deploy start --target-org $env:ORG_ALIAS --source-dir $env:CHANGED_DIR --wait 15 --json
+          if ($deployResult -match '"status": *"Failed"') {
+              Write-Error "Deployment failed."
               exit 1
-          } else {
-              Write-Host "Deployment completed successfully."
-          }   
+          }
+          Write-Host "Deployment completed successfully."   
           
       # ======================
       # 12. Run Apex Tests
