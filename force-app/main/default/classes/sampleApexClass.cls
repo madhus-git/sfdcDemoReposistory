@@ -48,7 +48,7 @@ public class sampleApexClass {
 
     public void complexMethod(String param1, Integer param2, Boolean param3, Decimal param4, Date param5) {
         System.debug('Complex method called');
-        System.debug('GitHub CICD demo..........');
+        System.debug('GitHub CICD demo.........');
     }
 
     public String getGreeting(String name) {
