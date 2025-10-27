@@ -262,13 +262,13 @@ jobs:
 
           if ($exitCode -ne 0) {
               Write-Warning "Deployment exited with code $exitCode. Checking for NothingToDeploy..."
-              
+
               $logFile = 'sf-deploy-log.txt'
               sf project deploy preview --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --json > $logFile 2>&1
               $logContent = Get-Content $logFile -Raw
 
               if ($logContent -match 'NothingToDeploy') {
-                  Write-Host 'No changes detected by CLI — forcing redeploy via temporary copy...'
+                  Write-Host 'No changes detected by CLI - forcing redeploy via temporary copy...'
                   $tempDir = 'redeploy-temp'
                   if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
                   Copy-Item "$env:CHANGED_DIR" $tempDir -Recurse
@@ -280,7 +280,7 @@ jobs:
 
                   sf project deploy start --source-dir $tempDir --target-org $env:ORG_ALIAS --ignore-conflicts --wait 10 --verbose
               } else {
-                  Write-Error "Deployment failed — review sf-deploy-log.txt for details."
+                  Write-Error "Deployment failed - review sf-deploy-log.txt for details."
                   Get-Content $logFile
                   exit 1
               }
