@@ -184,7 +184,7 @@ jobs:
 
           if (-not $changedFiles) {
               Write-Host "No changes detected. Skipping deployment."
-              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=none"
               exit 0
           }
 
@@ -202,12 +202,12 @@ jobs:
           $copiedFiles = (Get-ChildItem -Recurse -File changed-deploy | Measure-Object).Count
           if ($copiedFiles -eq 0) {
             Write-Host "No deployable files copied."
-            "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=none"
             exit 0
           }
 
           Write-Host "Copied $copiedFiles changed files into changed-deploy directory."
-          "CHANGED_DIR=changed-deploy/force-app/main/default" | Out-File -FilePath $env:GITHUB_ENV -Append        
+          Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=changed-deploy/force-app/main/default"        
           
       # ======================
       # 10. Preview Deployment Changes
