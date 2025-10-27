@@ -242,18 +242,25 @@ jobs:
           Write-Host 'Deploying changed metadata to Salesforce...'
           $ErrorActionPreference = 'Continue'
 
-          # --- Clean old deployment cache (optional, avoids "NothingToDeploy") ---
+          # --- Clean old CLI cache (ensures Salesforce sees new files) ---
           $cacheDir = Join-Path $env:USERPROFILE '.sf'
           if (Test-Path $cacheDir) {
               Write-Host 'Cleaning Salesforce CLI cache to ensure fresh deployment...'
               Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
           }
 
+          # --- Touch files to update timestamps (ensures Salesforce redeploys same files) ---
+          Write-Host 'Touching changed files to refresh timestamps...'
+          Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object {
+              (Get-Item $_.FullName).LastWriteTime = Get-Date
+          }
+
           # --- First deployment attempt ---
+          Write-Host 'Starting first deployment...'
           sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose
           $exitCode = $LASTEXITCODE
 
-          # --- Handle Salesforce CLI "NothingToDeploy" gracefully ---
+          # --- Handle NothingToDeploy gracefully ---
           if ($exitCode -ne 0) {
               Write-Warning "Deployment exited with code $exitCode. Checking for NothingToDeploy condition..."
               $logFile = 'sf-deploy-log.txt'
@@ -261,8 +268,8 @@ jobs:
               $logContent = Get-Content $logFile -Raw
 
               if ($logContent -match 'NothingToDeploy') {
-                  Write-Host 'Force-redeploying files even if Salesforce thinks there are no changes...'
-                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose --force-overwrite
+                  Write-Host 'Force-redeploying files by revalidating changes...'
+                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --purge-on-delete --verbose
               } else {
                   Write-Error "Deployment failed. Review CLI log for details."
                   Get-Content $logFile
