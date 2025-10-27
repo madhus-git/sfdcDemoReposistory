@@ -165,58 +165,59 @@ jobs:
         id: find_changes
         shell: powershell
         run: |
-          Write-Host "Identifying changed Salesforce metadata files..."
+          Write-Host 'Identifying changed Salesforce metadata files...'
+
           git fetch --prune --unshallow 2>$null
           $commitCount = (git rev-list --count HEAD)
 
           if ($commitCount -gt 1) {
               $changedFiles = git diff --name-only HEAD~1 HEAD
           } else {
-              Write-Host "First commit detected — using all files in force-app."
-              $changedFiles = git ls-files "force-app/*"
+              Write-Host 'First commit detected — using all files in force-app.'
+              $changedFiles = git ls-files 'force-app/*'
           }
 
           if (-not $changedFiles) {
-              Write-Host "No changes detected. Skipping deployment."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              Write-Host 'No changes detected in Salesforce metadata. Skipping deployment.'
+              echo 'CHANGED_DIR=none' >> $env:GITHUB_ENV
               exit 0
           }
 
           $metadataFiles = $changedFiles | Where-Object {
-              ($_ -like "force-app/*") -and
-              ($_ -match "\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionset|tab|layout)$")
+            ($_ -like 'force-app/*') -and
+            ($_ -match '\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionset|tab|layout)$')
           }
 
           if (-not $metadataFiles) {
-              Write-Host "No deployable metadata found."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              Write-Host 'No deployable metadata found.'
+              echo 'CHANGED_DIR=none' >> $env:GITHUB_ENV
               exit 0
           }
 
-          $deployDir = "changed-deploy/force-app/main/default"
-          if (Test-Path "changed-deploy") { Remove-Item -Recurse -Force "changed-deploy" }
-          New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
+          $deployDir = 'changed-deploy/force-app/main/default'
+          if (Test-Path 'changed-deploy') { Remove-Item -Recurse -Force 'changed-deploy' }
+              New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
 
-          foreach ($file in $metadataFiles) {
-              $dest = Join-Path "changed-deploy" $file
-              $destDir = Split-Path $dest
-              if (-not (Test-Path $destDir)) {
-                  New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-              }
-              if (Test-Path $file) {
-                  Copy-Item $file $dest -Force
-              }
+              foreach ($file in $metadataFiles) {
+                $dest = Join-Path 'changed-deploy' $file
+                $destDir = Split-Path $dest
+                if (-not (Test-Path $destDir)) {
+                    New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+                }
+                if (Test-Path $file) {
+                    Copy-Item $file $dest -Force
+                }
           }
 
-          $copied = (Get-ChildItem -Recurse "changed-deploy").Count
+          $copied = (Get-ChildItem -Recurse 'changed-deploy').Count
           if ($copied -eq 0) {
-              Write-Host "No valid files copied."
-              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
+              Write-Host 'No valid files copied.'
+              echo 'CHANGED_DIR=none' >> $env:GITHUB_ENV
               exit 0
           }
 
           Write-Host "Copied $copied changed metadata files to changed-deploy directory."
-          echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $env:GITHUB_ENV
+          echo 'CHANGED_DIR=changed-deploy/force-app/main/default' >> $env:GITHUB_ENV
 
       # ======================
       # 10. Preview Deployment
