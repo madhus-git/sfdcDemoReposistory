@@ -252,24 +252,42 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Deploying changed metadata to Salesforce..."
+
           $deployResultJson = sf project deploy start --target-org $env:ORG_ALIAS --source-dir "$env:CHANGED_DIR" --wait 15 --json
           $deploy = $deployResultJson | ConvertFrom-Json
 
+          Write-Host "==== Salesforce CLI Raw Output ===="
+          Write-Host $deployResultJson
+
+          # Check for deployment status and exit accordingly
           if ($deploy.status -ne 0) {
-              Write-Error "Deployment failed with status: $($deploy.status)"
-              Write-Host $deployResultJson
+              Write-Error "Deployment failed. CLI Status: $($deploy.status)"
+              if ($deploy.result.details.componentFailures) {
+                  Write-Host "---- Deployment Errors ----"
+                  $deploy.result.details.componentFailures | ForEach-Object {
+                      Write-Host ("File: {0} | Problem: {1}" -f $_.fileName, $_.problem)
+                  }
+              }
               exit 1
           }
 
-          if ($deploy.result.status -eq "Succeeded") {
-              Write-Host "Deployment completed successfully."
+          $resultStatus = $deploy.result.status
+          Write-Host "Deployment Status: $resultStatus"
+
+          if ($resultStatus -eq "Succeeded") {
+              Write-Host "Deployment completed successfully!"
+              if ($deploy.result.details.componentSuccesses) {
+                  Write-Host "---- Components Deployed ----"
+                  $deploy.result.details.componentSuccesses | ForEach-Object {
+                      Write-Host ("Type: {0}, File: {1}" -f $_.componentType, $_.fileName)
+                  }
+              }
               exit 0
-          } elseif ($deploy.result.status -eq "SucceededPartial") {
+          } elseif ($resultStatus -eq "SucceededPartial") {
               Write-Warning "Deployment partially succeeded."
               exit 0
           } else {
-              Write-Error "Deployment failed. Check deployment details."
-              Write-Host $deployResultJson
+              Write-Error "Deployment ended with unexpected status: $resultStatus"
               exit 1
           }
 
