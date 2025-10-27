@@ -11,7 +11,7 @@ on:
 jobs:
   salesforce-deploy:
     name: Salesforce CI/CD
-    runs-on: self-hosted  # Windows self-hosted runner
+    runs-on: self-hosted
     env:
       SFDC_HOST: "https://login.salesforce.com"
       ORG_ALIAS: "projectdemosfdc"
@@ -37,23 +37,21 @@ jobs:
       # 3. Install Salesforce CLI & Plugins
       # ======================
       - name: Install Pre-requisites
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Verifying Git installation..."
           if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Error "Git is not installed or not in PATH. Please install Git manually on this runner."
+              Write-Error "Git is not installed or not in PATH."
               exit 1
           } else {
-              Write-Host "Git is installed and available in PATH."
               git --version
           }
 
           Write-Host "Checking npm installation..."
           if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-              Write-Error "npm is not installed. Please install Node.js before continuing."
+              Write-Error "npm is not installed. Please install Node.js first."
               exit 1
           } else {
-              Write-Host "npm is installed. Version:"
               npm --version
           }
 
@@ -61,44 +59,42 @@ jobs:
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
               npm install --global @salesforce/cli@latest
               $npmGlobalPath = (npm root -g).Replace('node_modules', '')
-              echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              Write-Host "Salesforce CLI installed successfully..."
+              echo "PATH=$npmGlobalPath;$env:PATH" >> $env:GITHUB_ENV
           } else {
-              Write-Host "Salesforce CLI already present. Updating to latest..."
               npm update --global @salesforce/cli
           }
 
           Write-Host "Installing or Updating Salesforce Scanner Plugin..."
-          try{
+          try {
               sf plugins install @salesforce/sfdx-scanner@latest
-              Write-Host "Scanner plugin installed or updated."
           } catch {
-              Write-Warning "Scanner plugin may already exist, continuing..."
+              Write-Warning "Scanner plugin may already exist."
           }
-          Write-Host "Salesforce CLI setup completed successfully."           
-          
+
       # ======================
       # 4. Static Code Analysis
       # ======================
       - name: Static Code Analyzer
         id: sca
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Running Static Code Analysis..."
           $dateStamp = Get-Date -Format "ddMMyy"
           $buildNumber = $env:GITHUB_RUN_NUMBER
           $htmlDir = "html-report"
           $htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
+
           if (Test-Path $htmlDir) { Remove-Item -Recurse -Force $htmlDir }
           New-Item -ItemType Directory -Path $htmlDir | Out-Null
           sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "$htmlDir\$htmlReport"
+
           echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
 
       # ======================
       # 5. Upload SCA Report to Nexus
       # ======================
-      - name: Upload SCA Report to Artifactory
-        shell: powershell
+      - name: Upload SCA Report to Nexus
+        shell: pwsh
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
@@ -110,77 +106,51 @@ jobs:
           $nexusPath = "$projectName/$branchName/$buildNumber"
           $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
           $filePath = "html-report\$htmlReport"
+
           $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
           Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
-          Write-Host "Uploaded report to Nexus at ${url}"
 
       # ======================
-      # 7. Verify, Write, Clean & Validate JWT Key File
+      # 7. Verify & Write JWT Key File
       # ======================
       - name: Verify, Write, Clean & Validate JWT Key File
-        shell: powershell
+        shell: pwsh
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
           $keyPath = "C:\actions-runner\_work\jwt.key"
-          Write-Host "Starting JWT key verification and setup..."
+          Write-Host "Starting JWT key setup..."
 
-          # Step 1: Verify secret availability
-          if (-not $env:SF_JWT_KEY_CONTENT -or [string]::IsNullOrWhiteSpace($env:SF_JWT_KEY_CONTENT)) {
-              Write-Error "SF_JWT_KEY secret is missing or empty. Please check your GitHub repository secrets."
-              Write-Host "Go to: Repo → Settings → Secrets and variables → Actions → SF_JWT_KEY"
+          if (-not $env:SF_JWT_KEY_CONTENT) {
+              Write-Error "SF_JWT_KEY secret missing or empty."
               exit 1
           }
 
-          Write-Host "SF_JWT_KEY secret detected successfully. Length: $($env:SF_JWT_KEY_CONTENT.Length)"
-
-          # Step 2: Clean up any old JWT key file
-          if (Test-Path $keyPath) {
-              Write-Host "Old JWT key file found at $keyPath. Removing it..."
-              try {
-                  Remove-Item -Path $keyPath -Force -ErrorAction Stop
-                  Write-Host "Old JWT key file removed successfully."
-              } catch {
-                  Write-Warning "Could not remove old jwt.key file. Continuing with overwrite..."
-              }
-          }        
-    
-          # Step 3: Write key to file (handle Base64 or plain PEM)
-          Write-Host "Creating JWT key file at $keyPath..."
+          if (Test-Path $keyPath) { Remove-Item -Force $keyPath }
 
           if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
-              Write-Host "Detected Base64 encoded private key. Decoding..."
-              try {
-                  $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
-                  Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
-              } catch {
-                  Write-Error "Base64 decode failed. Ensure SF_JWT_KEY is correctly encoded."
-                  exit 1
-              }
+              $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
+              Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
           } else {
-              Write-Host "Detected plain-text PEM key. Writing as-is..."
               $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
           }
 
-          # Step 4: Validate file creation
           if (-not (Test-Path $keyPath)) {
-              Write-Error "JWT key file creation failed at $keyPath"
+              Write-Error "JWT key creation failed."
               exit 1
           }
 
-          Write-Host "JWT key file validated successfully and ready for authentication."
-          echo "JWT_KEY_FILE=$keyPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append    
+          echo "JWT_KEY_FILE=$keyPath" >> $env:GITHUB_ENV
 
       # ======================
       # 8. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
-        shell: powershell
+        shell: pwsh
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
         run: |
-          Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
             --client-id $env:CONNECTED_APP_CONSUMER_KEY `
             --jwt-key-file $env:JWT_KEY_FILE `
@@ -189,15 +159,13 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify Changed Components
+      # 9. Identify Changed Components (Fixed)
       # ======================
       - name: Identify changed Salesforce components
         id: find_changes
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Identifying changed Salesforce metadata files..."
-
-          # Fetch commit history safely (handle shallow clone)
           git fetch --prune --unshallow 2>$null
           $commitCount = (git rev-list --count HEAD)
 
@@ -210,11 +178,10 @@ jobs:
 
           if (-not $changedFiles) {
               Write-Host "No changes detected. Skipping deployment."
-              Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=none"
+              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
-          # Filter valid Salesforce metadata file types
           $metadataFiles = $changedFiles | Where-Object {
               ($_ -like "force-app/*") -and
               ($_ -match "\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionset|tab|layout)$")
@@ -222,11 +189,10 @@ jobs:
 
           if (-not $metadataFiles) {
               Write-Host "No deployable metadata found."
-              Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=none"
+              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
-          # Prepare changed-deploy folder
           $deployDir = "changed-deploy/force-app/main/default"
           if (Test-Path "changed-deploy") { Remove-Item -Recurse -Force "changed-deploy" }
           New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
@@ -245,21 +211,21 @@ jobs:
           $copied = (Get-ChildItem -Recurse "changed-deploy").Count
           if ($copied -eq 0) {
               Write-Host "No valid files copied."
-              Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=none"
+              echo "CHANGED_DIR=none" >> $env:GITHUB_ENV
               exit 0
           }
 
           Write-Host "Copied $copied changed metadata files to changed-deploy directory."
-          Add-Content -Path $env:GITHUB_ENV -Value "CHANGED_DIR=changed-deploy/force-app/main/default"
+          echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $env:GITHUB_ENV
 
       # ======================
       # 10. Preview Deployment
       # ======================
       - name: Preview Deployment Changes
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "Previewing deployment changes from $env:CHANGED_DIR ..."
+          Write-Host "Previewing deployment changes..."
           if (-not $env:CHANGED_DIR -or $env:CHANGED_DIR -eq 'none') {
               Write-Host "No changed directory found. Skipping preview."
               exit 0
@@ -269,33 +235,33 @@ jobs:
           } catch {
               Write-Warning "Preview failed or org doesn't support source tracking."
           }
-          
+
       # ======================
       # 11. Deploy Changed Components
       # ======================
       - name: Deploy Changed Salesforce Components
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "Deploying changed metadata from $env:CHANGED_DIR ..."
+          Write-Host "Deploying changed metadata..."
           if (-not (Test-Path $env:CHANGED_DIR)) {
-              Write-Host "Deployment folder not found. Skipping deployment."
+              Write-Host "Deployment folder not found. Skipping."
               exit 0
           }
 
           $deployResult = sf project deploy start --target-org $env:ORG_ALIAS --source-dir "$env:CHANGED_DIR" --wait 15 --json
           if ($deployResult -match '"status": *"Failed"') {
-              Write-Error "Deployment failed. See above for details."
+              Write-Error "Deployment failed. See logs above."
               exit 1
           }
-          Write-Host "Deployment completed successfully."  
-          
+          Write-Host "Deployment completed successfully."
+
       # ======================
       # 12. Run Apex Tests
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Running Apex Unit Tests..."
           New-Item -ItemType Directory -Path "test-results" -Force | Out-Null
@@ -309,33 +275,12 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 13. Cleanup
+      # 13. Cleanup Workspace
       # ======================
       - name: Cleanup Workspace
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "Starting workspace cleanup..."
+          Write-Host "Cleaning workspace..."
           $keyPath = "C:\actions-runner\_work\jwt.key"
-
-          # Step 1: Check if JWT key exists
-          if (Test-Path $keyPath) {
-              Write-Host "JWT key file found at $keyPath. Removing..."
-              try {
-                  Remove-Item -Path $keyPath -Force -ErrorAction Stop
-                  Write-Host "JWT key file removed successfully."
-              } catch {
-                  Write-Warning "Could not delete JWT key file: $($_.Exception.Message)"
-              }
-          } else {
-              Write-Host "No JWT key file found. Skipping key cleanup."
-          }
-
-          # Step 2: Clean the rest of workspace (optional)
-          Write-Host "Cleaning temporary files and workspace folders..."
-          try {
-              Remove-Item -Recurse -Force -Path $env:GITHUB_WORKSPACE\* -ErrorAction SilentlyContinue
-              Write-Host "Workspace cleanup completed."
-          } catch {
-              Write-Warning "Could not clean some workspace files: $($_.Exception.Message)"
-          }
-          Write-Host "Cleanup step completed successfully."
+          if (Test-Path $keyPath) { Remove-Item -Force $keyPath }
+          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\*" -ErrorAction SilentlyContinue
