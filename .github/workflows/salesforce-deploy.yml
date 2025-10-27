@@ -251,18 +251,27 @@ jobs:
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
         shell: powershell
         run: |
-          Write-Host "Deploying changed metadata..."
-          if (-not (Test-Path $env:CHANGED_DIR)) {
-              Write-Host "Deployment folder not found. Skipping."
-              exit 0
-          }
+          Write-Host "Deploying changed metadata to Salesforce..."
+          $deployResultJson = sf project deploy start --target-org $env:ORG_ALIAS --source-dir "$env:CHANGED_DIR" --wait 15 --json
+          $deploy = $deployResultJson | ConvertFrom-Json
 
-          $deployResult = sf project deploy start --target-org $env:ORG_ALIAS --source-dir "$env:CHANGED_DIR" --wait 15 --json
-          if ($deployResult -match '"status": *"Failed"') {
-              Write-Error "Deployment failed. See logs above."
+          if ($deploy.status -ne 0) {
+              Write-Error "Deployment failed with status: $($deploy.status)"
+              Write-Host $deployResultJson
               exit 1
           }
-          Write-Host "Deployment completed successfully."
+
+          if ($deploy.result.status -eq "Succeeded") {
+              Write-Host "Deployment completed successfully."
+              exit 0
+          } elseif ($deploy.result.status -eq "SucceededPartial") {
+              Write-Warning "Deployment partially succeeded."
+              exit 0
+          } else {
+              Write-Error "Deployment failed. Check deployment details."
+              Write-Host $deployResultJson
+              exit 1
+          }
 
       # ======================
       # 12. Run Apex Tests
