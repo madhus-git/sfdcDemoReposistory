@@ -161,64 +161,47 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 9. Identify Changed Components (Fixed)
+      # 9. Identify Changed Components (Updated for same-file redeploys)
       # ======================
       - name: Identify changed Salesforce components
         id: find_changes
-        shell: powershell
+        shell: bash
         run: |
-          Write-Host 'Identifying changed Salesforce metadata files...'
+          echo "Identifying changed Salesforce metadata files..."
+          mkdir -p changed-deploy/force-app/main/default
 
-          $commitCount = (git rev-list --count HEAD)
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep -E "^force-app/" || true)
+          else
+            echo "First commit — taking all metadata files."
+            CHANGED_FILES=$(git ls-files "force-app/")
+          fi
 
-          if ($commitCount -gt 1) {
-              $changedFiles = git diff --name-only HEAD~1 HEAD
-          } else {
-              Write-Host 'First commit detected — using all files in force-app.'
-              $changedFiles = git ls-files 'force-app/*'
-          }
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changes detected. Skipping deployment."
+            echo "CHANGED_DIR=none" >> $GITHUB_ENV
+            exit 0
+          fi 
 
-          if (-not $changedFiles) {
-              Write-Host 'No changes detected in Salesforce metadata. Skipping deployment.'
-              echo 'CHANGED_DIR=none' >> $env:GITHUB_ENV
-              exit 0
-          }
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
 
-          $metadataFiles = $changedFiles | Where-Object {
-            ($_ -like 'force-app/*') -and
-            ($_ -match '\.(cls|xml|trigger|page|component|js|html|cmp|css|object|field|profile|permissionset|tab|layout)$')
-          }
+          for file in $CHANGED_FILES; do
+            if [ -f "$file" ]; then
+              mkdir -p "changed-deploy/$(dirname "$file")"
+              cp "$file" "changed-deploy/$file"
+            fi
+          done
 
-          if (-not $metadataFiles) {
-              Write-Host 'No deployable metadata found.'
-              echo 'CHANGED_DIR=none' >> $env:GITHUB_ENV
-              exit 0
-          }
+          COPIED=$(find changed-deploy -type f | wc -l)
+          if [ "$COPIED" -eq 0 ]; then
+            echo "No deployable files copied."
+            echo "CHANGED_DIR=none" >> $GITHUB_ENV
+            exit 0
+          fi
 
-          $deployDir = 'changed-deploy/force-app/main/default'
-          if (Test-Path 'changed-deploy') { Remove-Item -Recurse -Force 'changed-deploy' }
-          New-Item -ItemType Directory -Path $deployDir -Force | Out-Null
-
-          foreach ($file in $metadataFiles) {
-              $dest = Join-Path 'changed-deploy' $file
-              $destDir = Split-Path $dest
-              if (-not (Test-Path $destDir)) {
-                  New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-              }
-              if (Test-Path $file) {
-                  Copy-Item $file $dest -Force
-              }
-          }
-
-          $copied = (Get-ChildItem -Recurse 'changed-deploy').Count
-          if ($copied -eq 0) {
-              Write-Host 'No valid files copied.'
-              echo 'CHANGED_DIR=none' >> $env:GITHUB_ENV
-              exit 0
-          }
-
-          Write-Host "Copied $copied changed metadata files to changed-deploy directory."
-          echo 'CHANGED_DIR=changed-deploy/force-app/main/default' >> $env:GITHUB_ENV
+          echo "Copied $COPIED changed files into changed-deploy directory."
+          echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $GITHUB_ENV   
 
       # ======================
       # 10. Preview Deployment Changes
@@ -232,8 +215,7 @@ jobs:
               Write-Host "No changed directory found. Skipping preview."
               exit 0
           }
-          
-          # Check if org supports source tracking
+
           $orgType = sf org display --target-org $env:ORG_ALIAS --json | ConvertFrom-Json
           $isScratch = $orgType.result.isScratchOrg
 
@@ -252,14 +234,11 @@ jobs:
         shell: powershell
         run: |
           Write-Host "Deploying changed metadata to Salesforce..."
-
           $deployResultJson = sf project deploy start --target-org $env:ORG_ALIAS --source-dir "$env:CHANGED_DIR" --wait 15 --json
           $deploy = $deployResultJson | ConvertFrom-Json
-
           Write-Host "==== Salesforce CLI Raw Output ===="
           Write-Host $deployResultJson
 
-          # Check for deployment status and exit accordingly
           if ($deploy.status -ne 0) {
               Write-Error "Deployment failed. CLI Status: $($deploy.status)"
               if ($deploy.result.details.componentFailures) {
@@ -274,17 +253,8 @@ jobs:
           $resultStatus = $deploy.result.status
           Write-Host "Deployment Status: $resultStatus"
 
-          if ($resultStatus -eq "Succeeded") {
-              Write-Host "Deployment completed successfully!"
-              if ($deploy.result.details.componentSuccesses) {
-                  Write-Host "---- Components Deployed ----"
-                  $deploy.result.details.componentSuccesses | ForEach-Object {
-                      Write-Host ("Type: {0}, File: {1}" -f $_.componentType, $_.fileName)
-                  }
-              }
-              exit 0
-          } elseif ($resultStatus -eq "SucceededPartial") {
-              Write-Warning "Deployment partially succeeded."
+          if ($resultStatus -eq "Succeeded" -or $resultStatus -eq "SucceededPartial") {
+              Write-Host "Deployment successful!"
               exit 0
           } else {
               Write-Error "Deployment ended with unexpected status: $resultStatus"
