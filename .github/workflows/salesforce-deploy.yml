@@ -32,14 +32,37 @@ jobs:
       - name: Install Salesforce CLI and Plugins
         shell: powershell
         run: |
-          Write-Host "Installing Salesforce CLI..."
-          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-            npm install --global @salesforce/cli@latest
+          Write-Host "Verifying Git installation..."
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+              Write-Error "Git is not installed or not in PATH."
+              exit 1
           } else {
-            sf update
+              git --version
           }
-          Write-Host "Installing Scanner Plugin..."
-          sf plugins install @salesforce/sfdx-scanner@latest
+
+          Write-Host "Checking npm installation..."
+          if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+              Write-Error "npm is not installed. Please install Node.js first."
+              exit 1
+          } else {
+              npm --version
+          }
+
+          Write-Host "Installing or Updating Salesforce CLI..."
+          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+              npm install --global @salesforce/cli@latest
+              $npmGlobalPath = (npm root -g).Replace('node_modules', '')
+              echo "PATH=$npmGlobalPath;$env:PATH" >> $env:GITHUB_ENV
+          } else {
+              npm update --global @salesforce/cli
+          }
+
+          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
+          try {
+              sf plugins install @salesforce/sfdx-scanner@latest
+          } catch {
+              Write-Warning "Scanner plugin may already exist."
+          }
 
       # ======================
       # 3. Authenticate Salesforce Org
