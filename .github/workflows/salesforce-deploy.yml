@@ -221,7 +221,7 @@ jobs:
           echo 'CHANGED_DIR=changed-deploy/force-app/main/default' >> $env:GITHUB_ENV
 
       # ======================
-      # 10. Preview Deployment
+      # 10. Preview Deployment Changes
       # ======================
       - name: Preview Deployment Changes
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
@@ -232,12 +232,18 @@ jobs:
               Write-Host "No changed directory found. Skipping preview."
               exit 0
           }
-          try {
-              sf project deploy preview --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS
-          } catch {
-              Write-Warning "Preview failed or org doesn't support source tracking."
-          }
+          
+          # Check if org supports source tracking
+          $orgType = sf org display --target-org $env:ORG_ALIAS --json | ConvertFrom-Json
+          $isScratch = $orgType.result.isScratchOrg
 
+          if ($isScratch -eq $true) {
+              Write-Host "Org supports source tracking. Running preview..."
+              sf project deploy preview --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS
+          } else {
+              Write-Host "Org is not source-tracked (sandbox/prod). Skipping preview step."
+          }    
+          
       # ======================
       # 11. Deploy Changed Components
       # ======================
