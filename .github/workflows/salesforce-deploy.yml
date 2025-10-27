@@ -202,7 +202,7 @@ jobs:
           $commitCount = (git rev-list --count HEAD)
           if ($commitCount -gt 1) {
               $changedFiles = git diff --name-only HEAD~1 HEAD
-          else {
+          } else {
               Write-Host "This is the first commit. Using all files in force-app for initial deploy."
               $changedFiles = git ls-files "force-app/*"
           }
