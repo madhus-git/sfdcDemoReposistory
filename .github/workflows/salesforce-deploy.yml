@@ -166,44 +166,44 @@ jobs:
       - name: Identify changed Salesforce metadata files
         shell: powershell
         run: |
-          Write-Host "Identifying changed Salesforce metadata files..."
-          $ErrorActionPreference = "Stop"
+          Write-Host 'Identifying changed Salesforce metadata files...'
+          $ErrorActionPreference = 'Stop'
 
-          $changedDeployPath = "changed-deploy/force-app/main/default"
+          $changedDeployPath = 'changed-deploy/force-app/main/default'
           if (Test-Path $changedDeployPath) { Remove-Item $changedDeployPath -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $changedDeployPath | Out-Null
 
           # Get changed files (compare last commit with previous one)
-          $hasPrevCommit = git rev-parse "HEAD^" 2>$null
+          $hasPrevCommit = git rev-parse 'HEAD^' 2>$null
           if ($LASTEXITCODE -eq 0) {
-              $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match "^force-app/" }
+              $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match '^force-app/' }
           } else {
-              Write-Host "First commit — taking all metadata files."
-              $changedFiles = git ls-files "force-app/"
+              Write-Host 'First commit — taking all metadata files.'
+              $changedFiles = git ls-files 'force-app/'
           }
 
           if (-not $changedFiles) {
-              Write-Host "No changes detected. Skipping deployment."
+              Write-Host 'No changes detected. Skipping deployment.'
               Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=none'
               exit 0
           }
 
-          Write-Host "Changed files:"
+          Write-Host 'Changed files:'
           $changedFiles | ForEach-Object { Write-Host $_ }
 
           foreach ($file in $changedFiles) {
-              if (Test-Path $file) {
-                $destPath = Join-Path "changed-deploy" $file
+            if (Test-Path $file) {
+                $destPath = Join-Path 'changed-deploy' $file
                 New-Item -ItemType Directory -Force -Path (Split-Path $destPath) | Out-Null
                 Copy-Item $file $destPath -Force
-              }
+            }
           }
 
           $copiedFiles = (Get-ChildItem -Recurse -File changed-deploy | Measure-Object).Count
           if ($copiedFiles -eq 0) {
-            Write-Host "No deployable files copied."
-            Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=none'
-            exit 0
+              Write-Host 'No deployable files copied.'
+              Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=none'
+              exit 0
           }
 
           Write-Host "Copied $copiedFiles changed files into changed-deploy directory."
@@ -239,8 +239,38 @@ jobs:
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-          Write-Host "Deploying changed metadata to Salesforce..."
-          sf project deploy start --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS --ignore-conflicts --verbose
+          Write-Host 'Deploying changed metadata to Salesforce...'
+          $ErrorActionPreference = 'Continue'
+
+          # --- Clean old deployment cache (optional, avoids "NothingToDeploy") ---
+          $cacheDir = Join-Path $env:USERPROFILE '.sf'
+          if (Test-Path $cacheDir) {
+              Write-Host 'Cleaning Salesforce CLI cache to ensure fresh deployment...'
+              Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
+          }
+
+          # --- First deployment attempt ---
+          sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose
+          $exitCode = $LASTEXITCODE
+
+          # --- Handle Salesforce CLI "NothingToDeploy" gracefully ---
+          if ($exitCode -ne 0) {
+              Write-Warning "Deployment exited with code $exitCode. Checking for NothingToDeploy condition..."
+              $logFile = 'sf-deploy-log.txt'
+              sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose *> $logFile
+              $logContent = Get-Content $logFile -Raw
+
+              if ($logContent -match 'NothingToDeploy') {
+                  Write-Host 'Force-redeploying files even if Salesforce thinks there are no changes...'
+                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose --force-overwrite
+              } else {
+                  Write-Error "Deployment failed. Review CLI log for details."
+                  Get-Content $logFile
+                  exit 1
+              }
+          } else {
+              Write-Host 'Deployment completed successfully.'
+          }
 
       # ======================
       # 12. Run Apex Tests
