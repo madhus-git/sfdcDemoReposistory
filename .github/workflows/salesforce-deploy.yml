@@ -37,7 +37,7 @@ jobs:
       # 3. Install Salesforce CLI & Plugins
       # ======================
       - name: Install Pre-requisites
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
           if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -76,7 +76,7 @@ jobs:
       # ======================
       - name: Static Code Analyzer
         id: sca
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Running Static Code Analysis..."
           $dateStamp = Get-Date -Format "ddMMyy"
@@ -94,7 +94,7 @@ jobs:
       # 5. Upload SCA Report to Nexus
       # ======================
       - name: Upload SCA Report to Nexus
-        shell: pwsh
+        shell: powershell
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
@@ -114,7 +114,7 @@ jobs:
       # 7. Verify & Write JWT Key File
       # ======================
       - name: Verify, Write, Clean & Validate JWT Key File
-        shell: pwsh
+        shell: powershell
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
@@ -146,7 +146,7 @@ jobs:
       # 8. Authenticate Salesforce Org
       # ======================
       - name: Authenticate Salesforce Org
-        shell: pwsh
+        shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
@@ -163,7 +163,7 @@ jobs:
       # ======================
       - name: Identify changed Salesforce components
         id: find_changes
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Identifying changed Salesforce metadata files..."
           git fetch --prune --unshallow 2>$null
@@ -223,7 +223,7 @@ jobs:
       # ======================
       - name: Preview Deployment Changes
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Previewing deployment changes..."
           if (-not $env:CHANGED_DIR -or $env:CHANGED_DIR -eq 'none') {
@@ -241,7 +241,7 @@ jobs:
       # ======================
       - name: Deploy Changed Salesforce Components
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Deploying changed metadata..."
           if (-not (Test-Path $env:CHANGED_DIR)) {
@@ -261,7 +261,7 @@ jobs:
       # ======================
       - name: Run Apex Unit Tests
         if: env.CHANGED_DIR != 'none'
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Running Apex Unit Tests..."
           New-Item -ItemType Directory -Path "test-results" -Force | Out-Null
@@ -278,7 +278,7 @@ jobs:
       # 13. Cleanup Workspace
       # ======================
       - name: Cleanup Workspace
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Cleaning workspace..."
           $keyPath = "C:\actions-runner\_work\jwt.key"
