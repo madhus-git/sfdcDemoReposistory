@@ -165,43 +165,48 @@ jobs:
       # ======================
       - name: Identify changed Salesforce components
         id: find_changes
-        shell: bash
+        shell: powershell
         run: |
-          echo "Identifying changed Salesforce metadata files..."
-          mkdir -p changed-deploy/force-app/main/default
+          Write-Host "Identifying changed Salesforce metadata files..."
+          $deployDir = "changed-deploy/force-app/main/default"
+          New-Item -ItemType Directory -Force -Path $deployDir | Out-Null
 
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            CHANGED_FILES=$(git diff --name-only HEAD^ HEAD | grep -E "^force-app/" || true)
-          else
-            echo "First commit — taking all metadata files."
-            CHANGED_FILES=$(git ls-files "force-app/")
-          fi
+          # Get the previous commit (if exists)
+          try {
+              git rev-parse HEAD~1 > $null 2>&1
+              $changedFiles = git diff --name-only HEAD~1 HEAD | Where-Object { $_ -like "force-app/*" }
+          } catch {
+              Write-Host "First commit — taking all metadata files."
+              $changedFiles = git ls-files "force-app/*"
+          }
 
-          if [ -z "$CHANGED_FILES" ]; then
-            echo "No changes detected. Skipping deployment."
-            echo "CHANGED_DIR=none" >> $GITHUB_ENV
-            exit 0
-          fi 
+          if (-not $changedFiles -or $changedFiles.Count -eq 0) {
+              Write-Host "No changes detected. Skipping deployment."
+              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
+              exit 0
+          }
 
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
+          Write-Host "Changed files:"
+          $changedFiles | ForEach-Object { Write-Host " - $_" }
 
-          for file in $CHANGED_FILES; do
-            if [ -f "$file" ]; then
-              mkdir -p "changed-deploy/$(dirname "$file")"
-              cp "$file" "changed-deploy/$file"
-            fi
-          done
+          foreach ($file in $changedFiles) {
+              if (Test-Path $file) {
+                  $destination = Join-Path $deployDir (Split-Path $file -Leaf)
+                  $targetDir = Split-Path $destination
+                  New-Item -ItemType Directory -Force -Path $targetDir | Out-Null
+                  Copy-Item $file $destination -Force
+              }
+          }
 
-          COPIED=$(find changed-deploy -type f | wc -l)
-          if [ "$COPIED" -eq 0 ]; then
-            echo "No deployable files copied."
-            echo "CHANGED_DIR=none" >> $GITHUB_ENV
-            exit 0
-          fi
+          $copiedFiles = Get-ChildItem -Path "changed-deploy" -Recurse -File | Measure-Object | Select-Object -ExpandProperty Count
+          if ($copiedFiles -eq 0) {
+              Write-Host "No deployable files copied."
+              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
+              exit 0
+          }
 
-          echo "Copied $COPIED changed files into changed-deploy directory."
-          echo "CHANGED_DIR=changed-deploy/force-app/main/default" >> $GITHUB_ENV   
+          Write-Host "Copied $copiedFiles changed files into changed-deploy directory."
+          "CHANGED_DIR=changed-deploy/force-app/main/default" | Out-File -FilePath $env:GITHUB_ENV -Append   
 
       # ======================
       # 10. Preview Deployment Changes
