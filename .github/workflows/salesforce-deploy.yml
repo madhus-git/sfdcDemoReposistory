@@ -242,39 +242,27 @@ jobs:
           Write-Host 'Deploying changed metadata to Salesforce...'
           $ErrorActionPreference = 'Continue'
 
-          # --- Clean old CLI cache (ensures Salesforce sees new files) ---
-          $cacheDir = Join-Path $env:USERPROFILE '.sf'
+          # --- Clean old CLI cache ---
+          $cacheDir = Join-Path $env:USERPROFILE '.sfdx'
           if (Test-Path $cacheDir) {
-              Write-Host 'Cleaning Salesforce CLI cache to ensure fresh deployment...'
+              Write-Host 'Cleaning old Salesforce CLI cache...'
               Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
           }
 
-          # --- Touch files to update timestamps (ensures Salesforce redeploys same files) ---
+          # --- Touch files to update timestamps ---
           Write-Host 'Touching changed files to refresh timestamps...'
           Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object {
               (Get-Item $_.FullName).LastWriteTime = Get-Date
           }
 
           # --- First deployment attempt ---
-          Write-Host 'Starting first deployment...'
-          sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose
+          Write-Host 'Starting deployment (classic sfdx deploy)...'
+          sfdx force:source:deploy -p "$env:CHANGED_DIR" -u $env:ORG_ALIAS -g -w 10
           $exitCode = $LASTEXITCODE
 
-          # --- Handle NothingToDeploy gracefully ---
           if ($exitCode -ne 0) {
-              Write-Warning "Deployment exited with code $exitCode. Checking for NothingToDeploy condition..."
-              $logFile = 'sf-deploy-log.txt'
-              sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --verbose *> $logFile
-              $logContent = Get-Content $logFile -Raw
-
-              if ($logContent -match 'NothingToDeploy') {
-                  Write-Host 'Force-redeploying files (same file modified again)...'
-                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --force-overwrite --verbose
-              } else {
-                  Write-Error "Deployment failed. Review CLI log for details."
-                  Get-Content $logFile
-                  exit 1
-              }
+              Write-Warning "Deployment exited with code $exitCode. Retrying with forceoverwrite..."
+              sfdx force:source:deploy -p "$env:CHANGED_DIR" -u $env:ORG_ALIAS -g -w 10 -f
           } else {
               Write-Host 'Deployment completed successfully.'
           }
