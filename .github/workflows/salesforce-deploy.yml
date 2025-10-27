@@ -268,8 +268,8 @@ jobs:
               $logContent = Get-Content $logFile -Raw
 
               if ($logContent -match 'NothingToDeploy') {
-                  Write-Host 'Force-redeploying files by revalidating changes...'
-                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --purge-on-delete --verbose
+                  Write-Host 'Force-redeploying files (same file modified again)...'
+                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --force-overwrite --verbose
               } else {
                   Write-Error "Deployment failed. Review CLI log for details."
                   Get-Content $logFile
