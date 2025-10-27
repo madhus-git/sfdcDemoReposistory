@@ -62,7 +62,7 @@ jobs:
               npm install --global @salesforce/cli@latest
               $npmGlobalPath = (npm root -g).Replace('node_modules', '')
               echo "PATH=$npmGlobalPath;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-              Write-Host "Salesforce CLI installed successfully."
+              Write-Host "Salesforce CLI installed successfully..."
           } else {
               Write-Host "Salesforce CLI already present. Updating to latest..."
               npm update --global @salesforce/cli
