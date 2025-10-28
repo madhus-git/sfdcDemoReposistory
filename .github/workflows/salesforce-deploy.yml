@@ -65,11 +65,22 @@ jobs:
           }
 
           Write-Host "Installing or Updating Salesforce Scanner Plugin..."
-          try {
-              sf plugins install @salesforce/sfdx-scanner@latest
-          } catch {
-              Write-Warning "Scanner plugin may already exist."
-          }
+          Write-Host "Installing Salesforce CLI plugins into global npm directory..."
+          $npmGlobal = "C:\actions-runner\_work\npm-global"
+          $sfBinPath = "$npmGlobal\node_modules\.bin"
+          $env:Path = "$sfBinPath;$env:Path"
+          echo "$sfBinPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Reinstall/repair plugins in same global location
+          Write-Host "Installing Code Analyzer plugin..."
+          npm install -g @salesforce/plugin-code-analyzer
+
+          Write-Host "Installing SFDX Scanner plugin..."
+          npm install -g @salesforce/sfdx-scanner
+
+          # Verify installation
+          Write-Host "Verifying installed plugins..."
+          sf plugins list || npx sf plugins list
 
       # ======================
       # 4. Static Code Analysis
