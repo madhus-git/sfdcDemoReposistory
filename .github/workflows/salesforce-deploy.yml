@@ -37,7 +37,7 @@ jobs:
       # 3. Install Salesforce CLI & Plugins (Fixed)
       # ======================
       - name: Install Pre-requisites
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
           if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -58,7 +58,7 @@ jobs:
           Write-Host "Installing or Updating Salesforce CLI..."
           npm install --global @salesforce/cli@latest
 
-          # ✅ FIX: Add npm global paths to PATH for current job
+          # FIX: Add npm global paths to PATH for current job
           $npmGlobalBin = (npm config get prefix) + "\node_modules\.bin"
           $userNpmPath = "$env:APPDATA\npm"
 
@@ -92,7 +92,7 @@ jobs:
       # ======================
       - name: Static Code Analyzer
         id: sca
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Running Static Code Analysis..."
           $dateStamp = Get-Date -Format "ddMMyy"
@@ -110,7 +110,7 @@ jobs:
       # 5. Upload SCA Report to Nexus
       # ======================
       - name: Upload SCA Report to Nexus
-        shell: pwsh
+        shell: powershell
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
@@ -131,7 +131,7 @@ jobs:
       # 6. Verify & Write JWT Key File
       # ======================
       - name: Verify, Write, Clean & Validate JWT Key File
-        shell: pwsh
+        shell: powershell
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
@@ -163,7 +163,7 @@ jobs:
       # 7. Authenticate Salesforce Org (JWT)
       # ======================
       - name: Authenticate Salesforce Org
-        shell: pwsh
+        shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
@@ -181,7 +181,7 @@ jobs:
       # ======================
       - name: Detect Changed Metadata
         id: detect_changes
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Detecting changed Salesforce metadata files..."
           $ErrorActionPreference = "Stop"
@@ -221,7 +221,7 @@ jobs:
       # ======================
       - name: Preview Deployment
         if: env.CHANGED == 'true'
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Previewing changes before deployment..."
           sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS --ignore-conflicts
@@ -231,7 +231,7 @@ jobs:
       # ======================
       - name: Deploy Changed Metadata
         if: env.CHANGED == 'true'
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Deploying changed Salesforce metadata..."
           sf project deploy start `
@@ -246,7 +246,7 @@ jobs:
       # ======================
       - name: Run Apex Tests
         if: env.CHANGED == 'true'
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Running Apex Unit Tests..."
           sf apex run test --target-org $env:ORG_ALIAS --result-format junit --output-dir test-results --wait 10
@@ -263,7 +263,7 @@ jobs:
       # ======================
       - name: Cleanup
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           Write-Host "Cleaning up temporary files..."
           if (Test-Path 'changed-deploy') { Remove-Item -Recurse -Force 'changed-deploy' }
