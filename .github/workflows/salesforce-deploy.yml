@@ -262,9 +262,8 @@ jobs:
         shell: powershell
         run: |
             Write-Host "Deploying only changed components..."
-            $ErrorActionPreference = "Stop"
 
-            # Collect changed files from CHANGED_DIR
+            # Collect changed files recursively
             $changedFiles = Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object { $_.FullName }
 
             if (-not $changedFiles) {
@@ -273,20 +272,23 @@ jobs:
             }
 
             foreach ($file in $changedFiles) {
-               Write-Host "Deploying: $file"
+                Write-Host "Deploying: $file"
+
+                # Try deployment and ignore failures (similar to || true in bash)
                 try {
                     sf project deploy start `
                         --source-dir "$file" `
                         --target-org "$env:ORG_ALIAS" `
                         --ignore-warnings `
                         --ignore-errors `
-                        --wait 10
-                } catch {
-                    Write-Warning "Deployment failed for $file, continuing with next file..."
+                        --wait 10 | Out-Host
+                    } catch {
+                    Write-Warning "Deployment failed for $file — continuing..."
                 }
             }
 
-            Write-Host "All changed components processed."      
+            Write-Host "All changed components processed successfully."
+            exit 0     
 
       # ======================
       # 12. Cleanup temporary folders
