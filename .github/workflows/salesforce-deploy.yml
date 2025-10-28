@@ -218,13 +218,16 @@ jobs:
         if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
         shell: powershell
         run: |
-          Write-Host "🔎 Previewing deployment..."
+          Write-Host "Previewing deployment..."
           if (-not $env:CHANGED_DIR -or $env:CHANGED_DIR -eq 'none') {
               Write-Host "No changes to preview. Skipping..."
               exit 0
           }
 
-          sf project deploy preview --source-dir "$env:CHANGED_DIR" --target-org "$env:ORG_ALIAS" --ignore-conflicts --json    
+          $srcDir = $env:CHANGED_DIR
+          $org = $env:ORG_ALIAS
+          Write-Host "Previewing deployment for source: $srcDir"
+          sf project deploy preview --source-dir $srcDir --target-org $org --ignore-conflicts --json    
           
       # ======================
       # 11. Deploy Changed Components
