@@ -172,7 +172,7 @@ jobs:
       # ======================
       # 8. Authenticate Salesforce Org
       # ======================
-      - name: Authenticate Salesforce Org
+      - name: Authenticate Org
         shell: powershell
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
@@ -289,7 +289,7 @@ jobs:
             Write-Host "All changed components processed."      
 
       # ======================
-      # 12. Run Apex Tests
+      # 12. Cleanup temporary folders
       # ======================
       - name: Cleanup temporary folders
         if: always()
@@ -310,6 +310,9 @@ jobs:
           New-Item -ItemType Directory -Path "test-results" -Force | Out-Null
           sf apex run test --target-org $env:ORG_ALIAS --result-format junit --output-dir test-results --wait 10
 
+      # ======================
+      # 14. Publish Apex Tests
+      # ======================
       - name: Publish Apex Test Results
         if: env.CHANGED_DIR != 'none'
         uses: actions/upload-artifact@v4
@@ -318,7 +321,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 14. Cleanup Workspace
+      # 15. Cleanup Workspace
       # ======================
       - name: Cleanup Workspace
         shell: powershell
