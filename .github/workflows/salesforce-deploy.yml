@@ -34,7 +34,7 @@ jobs:
           key: ${{ runner.os }}-sfdx-cli    
 
       # ======================
-      # 3. Install Salesforce CLI & Plugins
+      # 3. Install Salesforce CLI & Plugins (Fixed)
       # ======================
       - name: Install Pre-requisites
         shell: powershell
@@ -64,15 +64,24 @@ jobs:
               npm update --global @salesforce/cli
           }
 
-          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
+          Write-Host "Installing Required Salesforce Plugins..."
           try {
               sf plugins install @salesforce/sfdx-scanner@latest
           } catch {
-              Write-Warning "Scanner plugin may already exist."
+              Write-Warning "SFDX Scanner plugin may already exist."
           }
 
+          try {
+              sf plugins install @salesforce/plugin-code-analyzer@latest
+          } catch {
+              Write-Warning "Code Analyzer plugin may already exist."
+          }
+
+          Write-Host "Verifying plugin installation..."
+          sf plugins list
+
       # ======================
-      # 4. Static Code Analysis
+      # 4. Static Code Analysis (Fixed)
       # ======================
       - name: Static Code Analyzer
         id: sca
@@ -86,6 +95,8 @@ jobs:
 
           if (Test-Path $htmlDir) { Remove-Item -Recurse -Force $htmlDir }
           New-Item -ItemType Directory -Path $htmlDir | Out-Null
+
+          # Run Code Analyzer (new plugin)
           sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "$htmlDir\$htmlReport"
 
           echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
@@ -107,6 +118,7 @@ jobs:
           $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
           $filePath = "html-report\$htmlReport"
 
+          Write-Host "Uploading report to Nexus: $url"
           $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
           Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
 
@@ -151,6 +163,7 @@ jobs:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
         run: |
+          Write-Host "Authenticating to Salesforce Org..."
           sf org login jwt `
             --client-id $env:CONNECTED_APP_CONSUMER_KEY `
             --jwt-key-file $env:JWT_KEY_FILE `
@@ -172,7 +185,6 @@ jobs:
           if (Test-Path $changedDir) { Remove-Item -Recurse -Force $changedDir }
           New-Item -ItemType Directory -Path $changedDir | Out-Null
 
-          # Compare with previous commit (if exists)
           $hasPrevCommit = git rev-parse "HEAD^" 2>$null
           if ($LASTEXITCODE -eq 0) {
               $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match '^force-app/' }
@@ -200,7 +212,7 @@ jobs:
           echo "CHANGED_DIR=$changedDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 9. Preview Changes (if changed)
+      # 9. Preview Deployment
       # ======================
       - name: Preview Deployment
         if: env.CHANGED == 'true'
@@ -210,7 +222,7 @@ jobs:
           sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS --ignore-conflicts
 
       # ======================
-      # 10. Deploy Changed Components (if changed)
+      # 10. Deploy Changed Metadata
       # ======================
       - name: Deploy Changed Metadata
         if: env.CHANGED == 'true'
@@ -225,7 +237,7 @@ jobs:
             --wait 10
 
       # ======================
-      # 11. Run Apex Tests (if changed)
+      # 11. Run Apex Tests
       # ======================
       - name: Run Apex Tests
         if: env.CHANGED == 'true'
