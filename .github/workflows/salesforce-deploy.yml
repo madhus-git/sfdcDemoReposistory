@@ -4,9 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
-      - feature/**
-
+      - githubcicd
+      
 jobs:
   salesforce-deploy:
     name: Salesforce CI/CD
