@@ -242,7 +242,7 @@ jobs:
           Write-Host "Deploying changed metadata to Salesforce..."
           $ErrorActionPreference = "Stop"
 
-          # --- Clean CLI cache ---
+          # --- Clean Salesforce CLI cache ---
           $cacheDir = Join-Path $env:USERPROFILE ".sf"
           if (Test-Path $cacheDir) {
               Write-Host "Cleaning old Salesforce CLI cache..."
@@ -266,21 +266,23 @@ jobs:
               $logContent = Get-Content $logFile -Raw
 
               if ($logContent -match "NothingToDeploy") {
-                  Write-Host "No deployable changes detected. Attempting forced redeploy..."
+                  Write-Host "No deployable changes detected. Forcing redeploy with overwrite..."
 
                   $tempDir = "redeploy-temp"
                   if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
                   Copy-Item -Path "$env:CHANGED_DIR" -Destination $tempDir -Recurse
 
+                  # Touch files again
                   Get-ChildItem -Recurse -File $tempDir | ForEach-Object {
                       (Get-Item $_.FullName).LastWriteTime = Get-Date
                   }
 
-                  sf project deploy start --source-dir "$tempDir" --target-org "$env:ORG_ALIAS" --ignore-conflicts --wait 10 --verbose
+                  # Force overwrite redeploy
+                  sf project deploy start --source-dir "$tempDir" --target-org "$env:ORG_ALIAS" --ignore-conflicts --force-overwrite --wait 10 --verbose
                   if ($LASTEXITCODE -eq 0) {
                       Write-Host "Forced redeploy completed successfully."
                   } else {
-                      Write-Error "Forced redeploy also failed. Check sf-deploy-log.txt for details."
+                      Write-Error "Forced redeploy failed. Check sf-deploy-log.txt for details."
                       exit 1
                   }
               } else {
@@ -290,7 +292,7 @@ jobs:
               }
           } else {
               Write-Host "Deployment completed successfully."
-          }       
+          }      
 
       # ======================
       # 12. Run Apex Tests
