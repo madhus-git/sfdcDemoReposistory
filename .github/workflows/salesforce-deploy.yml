@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - githubcicd
-      
+
 jobs:
   salesforce-deploy:
     name: Salesforce CI/CD
@@ -34,28 +34,70 @@ jobs:
           key: ${{ runner.os }}-sfdx-cli    
 
       # ======================
-      # 3. Install Salesforce CLI & Plugins (Fixed)
+      # 3. Install Salesforce CLI (System-wide Fix)
       # ======================
-      - name: Install Pre-requisites
+      - name: Install Salesforce CLI (System-wide)
         shell: powershell
         run: |
-          Write-Host "Verifying Git installation..."
-          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-              Write-Error "Git is not installed or not in PATH."
-              exit 1
-          } else {
-              git --version
-          }
+          Write-Host "Installing or Updating Salesforce CLI system-wide..."
+          npm config set prefix "C:\Program Files\nodejs"
+          npm install --global @salesforce/cli
 
-          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
-          try {
-              sf plugins install @salesforce/sfdx-scanner@latest
-          } catch {
-              Write-Warning "Scanner plugin may already exist."
-          }
+          $SystemNpmPath = "C:\Program Files\nodejs"
+          Write-Host "Adding $SystemNpmPath to PATH..."
+          echo "$SystemNpmPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          Write-Host "Verifying CLI installation..."
+          Get-ChildItem "$SystemNpmPath" | Where-Object { $_.Name -like "sf*" }
+          sf --version
 
       # ======================
-      # 4. Static Code Analysis
+      # 4. Ensure CLI Accessible in PATH (Fallback Check)
+      # ======================
+      - name: Ensure Salesforce CLI is in PATH
+        shell: powershell
+        run: |
+          Write-Host "Ensuring Salesforce CLI is in PATH..."
+          $paths = @(
+            "C:\Program Files\nodejs",
+            "$env:APPDATA\npm",
+            "$env:LOCALAPPDATA\npm",
+            "C:\Users\Administrator\AppData\Roaming\npm",
+            "C:\Users\actions\AppData\Roaming\npm",
+            "C:\WINDOWS\ServiceProfiles\NetworkService\AppData\Roaming\npm"
+          )
+
+          foreach ($p in $paths) {
+            if (Test-Path "$p\sf.cmd") {
+              Write-Host "✅ Found sf.cmd at: $p"
+              echo "$p" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              break
+            }
+          }
+
+          Write-Host "Verifying sf command..."
+          Get-Command sf -ErrorAction SilentlyContinue | ForEach-Object { $_.Source }
+          sf --version
+
+      # ======================
+      # 5. Install Salesforce Plugins
+      # ======================
+      - name: Install Salesforce Plugins
+        shell: powershell
+        run: |
+          Write-Host "Installing Required Salesforce Plugins..."
+          try {
+            sf plugins install @salesforce/sfdx-scanner@latest
+            sf plugins install @salesforce/plugin-code-analyzer@latest
+          } catch {
+            Write-Warning "Salesforce plugins may already exist."
+          }
+
+          Write-Host "Verifying Plugin Installation..."
+          sf plugins list
+
+      # ======================
+      # 6. Static Code Analysis
       # ======================
       - name: Static Code Analyzer
         id: sca
@@ -74,7 +116,7 @@ jobs:
           echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
 
       # ======================
-      # 5. Upload SCA Report to Nexus
+      # 7. Upload SCA Report to Nexus
       # ======================
       - name: Upload SCA Report to Nexus
         shell: powershell
@@ -95,7 +137,7 @@ jobs:
           Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
 
       # ======================
-      # 6. Verify & Write JWT Key File
+      # 8. Verify & Write JWT Key File
       # ======================
       - name: Verify, Write, Clean & Validate JWT Key File
         shell: powershell
@@ -127,7 +169,7 @@ jobs:
           echo "JWT_KEY_FILE=$keyPath" >> $env:GITHUB_ENV
 
       # ======================
-      # 7. Authenticate Salesforce Org (JWT)
+      # 9. Authenticate Salesforce Org (JWT)
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
@@ -144,7 +186,7 @@ jobs:
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 8. Detect Changed Metadata Files
+      # 10. Detect Changed Metadata Files
       # ======================
       - name: Detect Changed Metadata
         id: detect_changes
@@ -184,7 +226,7 @@ jobs:
           echo "CHANGED_DIR=$changedDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 9. Preview Deployment
+      # 11. Preview Deployment
       # ======================
       - name: Preview Deployment
         if: env.CHANGED == 'true'
@@ -194,7 +236,7 @@ jobs:
           sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS --ignore-conflicts
 
       # ======================
-      # 10. Deploy Changed Metadata
+      # 12. Deploy Changed Metadata
       # ======================
       - name: Deploy Changed Metadata
         if: env.CHANGED == 'true'
@@ -209,7 +251,7 @@ jobs:
             --wait 10
 
       # ======================
-      # 11. Run Apex Tests
+      # 13. Run Apex Tests
       # ======================
       - name: Run Apex Tests
         if: env.CHANGED == 'true'
@@ -226,7 +268,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 12. Cleanup
+      # 14. Cleanup
       # ======================
       - name: Cleanup
         if: always()
