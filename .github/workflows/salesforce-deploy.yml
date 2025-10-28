@@ -58,12 +58,21 @@ jobs:
           Write-Host "Installing or Updating Salesforce CLI..."
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
               npm install --global @salesforce/cli@latest
-              $npmGlobalPath = (npm root -g).Replace('node_modules', '')
-              echo "PATH=$npmGlobalPath;$env:PATH" >> $env:GITHUB_ENV
           } else {
               npm update --global @salesforce/cli
           }
 
+          # Detect sf.cmd path and add to PATH dynamically
+          Write-Host "Locating Salesforce CLI binary..."
+          $sfPath = (Get-ChildItem -Path "C:\Users" -Recurse -Filter "sf.cmd" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if ($sfPath) {
+              $sfDir = Split-Path $sfPath
+              Write-Host "Found sf at: $sfDir"
+              echo "PATH=$sfDir;$env:PATH" >> $env:GITHUB_ENV
+          } else {
+              Write-Warning "sf.cmd not found in expected directories. CLI may not be accessible globally."
+          }    
+          
           Write-Host "Installing Required Salesforce Plugins..."
           try {
               sf plugins install @salesforce/sfdx-scanner@latest
