@@ -267,15 +267,15 @@ jobs:
 
               if ($logContent -match 'NothingToDeploy') {
                   Write-Host 'No deployable changes detected. Attempting forced redeploy...'
-
+                  
                   $tempDir = 'redeploy-temp'
                   if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
-                  Copy-Item "$env:CHANGED_DIR" $tempDir -Recurse
+                  Copy-Item -Path $env:CHANGED_DIR -Destination $tempDir -Recurse
 
                   Get-ChildItem -Recurse -File $tempDir | ForEach-Object {
                       (Get-Item $_.FullName).LastWriteTime = Get-Date
                   }
-                  
+
                   sf project deploy start --source-dir $tempDir --target-org $env:ORG_ALIAS --ignore-conflicts --wait 10 --verbose
                   if ($LASTEXITCODE -eq 0) {
                       Write-Host 'Forced redeploy completed successfully.'
@@ -287,9 +287,10 @@ jobs:
                   Write-Error 'Deployment failed for reasons other than NothingToDeploy.'
                   Get-Content $logFile
                   exit 1
-              } else {
-                  Write-Host 'Deployment completed successfully.'
-              }       
+              }
+          } else {
+              Write-Host 'Deployment completed successfully.'
+          }       
 
       # ======================
       # 12. Run Apex Tests
