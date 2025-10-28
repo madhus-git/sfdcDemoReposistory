@@ -104,38 +104,34 @@ jobs:
           if (Test-Path $htmlDir) { Remove-Item -Recurse -Force $htmlDir }
           New-Item -ItemType Directory -Path $htmlDir | Out-Null
 
-          # Ensure correct plugin version (v5.5.0 is stable)
-          Write-Host "Ensuring Salesforce Code Analyzer plugin is installed..."
-          try {
-              sf plugins install @salesforce/plugin-code-analyzer@5.5.0
-          } catch {
-              Write-Host "Retrying plugin installation via npm..."
-              npm install -g @salesforce/plugin-code-analyzer@5.5.0
-          }
+          # Force uninstall any existing analyzer version
+          Write-Host "Removing any existing Salesforce Code Analyzer plugin..."
+          sf plugins uninstall @salesforce/plugin-code-analyzer --force | Out-Null
+
+          # Install a stable, compatible version explicitly
+          Write-Host "Installing Salesforce Code Analyzer plugin (v5.4.0 stable)..."
+          sf plugins install @salesforce/plugin-code-analyzer@5.4.0
 
           # Use absolute workspace path
           $workspacePath = Join-Path $PWD "force-app"
-
           if (-not (Test-Path $workspacePath)) {
-              Write-Host "❌ Workspace folder not found: $workspacePath"
+              Write-Host "Workspace folder not found: $workspacePath"
               exit 1
           }
 
-          # Run analyzer (use safe options)
+          # Run analyzer with supported arguments only
           Write-Host "Running analyzer..."
           sf code-analyzer run `
             --workspace "$workspacePath" `
             --rule-selector Recommended `
-            --format html `
-            --output-file "$htmlDir\$htmlReport" `
-            --verbose
+            --output-file "$htmlDir\$htmlReport"
 
           # Verify report creation
           if (Test-Path "$htmlDir\$htmlReport") {
-              Write-Host "✅ Static Code Analysis report generated: $htmlDir\$htmlReport"
+              Write-Host "Static Code Analysis report generated: $htmlDir\$htmlReport"
               echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
           } else {
-              Write-Host "⚠️ Code Analyzer did not produce a report. Check logs above."
+              Write-Host "Code Analyzer did not produce a report. Check logs above."
               exit 1
           }
 
