@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       # ---------------------------------------------------------
-      # 🧩 Step 1: Verify Git & npm
+      # Step 1: Verify Git & npm
       # ---------------------------------------------------------
       - name: Verify Git and npm installation
         shell: powershell
@@ -33,7 +33,7 @@ jobs:
           npm --version
 
       # ---------------------------------------------------------
-      # 🧩 Step 2: Install Salesforce CLI (NetworkService compatible)
+      # Step 2: Install Salesforce CLI (NetworkService compatible)
       # ---------------------------------------------------------
       - name: Install or Update Salesforce CLI (NetworkService compatible)
         shell: powershell
@@ -52,17 +52,30 @@ jobs:
           # Install Salesforce CLI
           npm install -g @salesforce/cli
 
-          # Add CLI path for this workflow session
-          $sfPath = "$npmGlobal\node_modules\.bin"
-          echo "$sfPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          Write-Host "✅ Added $sfPath to PATH"
+          # Add CLI path to PATH for both session and workflow
+          $sfBinPath = "$npmGlobal\node_modules\.bin"
+          Write-Host "Adding $sfBinPath to PATH..."
+          $env:Path = "$sfBinPath;$env:Path"
+          echo "$sfBinPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Refresh PowerShell session (important for NetworkService)
+          Write-Host "Refreshing PowerShell session environment..."
+          [Environment]::SetEnvironmentVariable('Path', $env:Path, 'Process')
 
           # Verify CLI installation
+          Write-Host "Verifying Salesforce CLI installation..."
+          Get-Command sf -ErrorAction SilentlyContinue
+          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+              Write-Error "Salesforce CLI (sf) not found in PATH. Aborting."
+              Get-ChildItem $sfBinPath
+              exit 1
+          }
+
           sf --version
           sf plugins list
 
       # ---------------------------------------------------------
-      # 🧩 Step 3: Install Required Salesforce Plugins
+      # Step 3: Install Required Salesforce Plugins
       # ---------------------------------------------------------
       - name: Install Salesforce Plugins
         shell: powershell
