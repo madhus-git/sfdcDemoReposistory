@@ -47,45 +47,12 @@ jobs:
               git --version
           }
 
-          Write-Host "Checking npm installation..."
-          if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-              Write-Error "npm is not installed. Please install Node.js first."
-              exit 1
-          } else {
-              npm --version
-          }
-
-          Write-Host "Installing or Updating Salesforce CLI..."
-          npm install --global @salesforce/cli@latest
-
-          # FIX: Add npm global paths to PATH for current job
-          $npmGlobalBin = (npm config get prefix) + "\node_modules\.bin"
-          $userNpmPath = "$env:APPDATA\npm"
-
-          Write-Host "Adding npm global paths to PATH..."
-          Write-Host "  $npmGlobalBin"
-          Write-Host "  $userNpmPath"
-          echo "$npmGlobalBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$userNpmPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-          Write-Host "Verifying Salesforce CLI installation..."
-          sf --version
-
-          Write-Host "Installing Required Salesforce Plugins..."
+          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
           try {
               sf plugins install @salesforce/sfdx-scanner@latest
           } catch {
-              Write-Warning "SFDX Scanner plugin may already exist."
+              Write-Warning "Scanner plugin may already exist."
           }
-
-          try {
-              sf plugins install @salesforce/plugin-code-analyzer@latest
-          } catch {
-              Write-Warning "Code Analyzer plugin may already exist."
-          }
-
-          Write-Host "Verifying plugin installation..."
-          sf plugins list
 
       # ======================
       # 4. Static Code Analysis
