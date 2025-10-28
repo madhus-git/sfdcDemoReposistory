@@ -65,7 +65,6 @@ jobs:
           }
 
           Write-Host "Installing or Updating Salesforce Scanner Plugin..."
-          Write-Host "Installing Salesforce CLI plugins into global npm directory..."
           $npmGlobal = "C:\actions-runner\_work\npm-global"
           $sfBinPath = "$npmGlobal\node_modules\.bin"
           $env:Path = "$sfBinPath;$env:Path"
@@ -80,7 +79,12 @@ jobs:
 
           # Verify installation
           Write-Host "Verifying installed plugins..."
-          sf plugins list || npx sf plugins list
+          try {
+              sf plugins list
+          } catch {
+              Write-Host "sf command failed. Trying via npx..."
+              npx sf plugins list
+          }
 
       # ======================
       # 4. Static Code Analysis
