@@ -80,10 +80,10 @@ jobs:
           # Verify installation
           Write-Host "Verifying installed plugins..."
           try {
-              sf plugins list
+              sf plugins
           } catch {
               Write-Host "sf command failed. Trying via npx..."
-              npx sf plugins list
+              npx sf plugins
           }
 
       # ======================
