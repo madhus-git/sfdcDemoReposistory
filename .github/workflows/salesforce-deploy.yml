@@ -1,3 +1,4 @@
+
 name: Salesforce CI/CD Pipeline
 
 on:
@@ -261,61 +262,31 @@ jobs:
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-            Write-Host "Deploying only changed metadata components..."
+            Write-Host "Deploying only changed components..."
 
-            # Verify CHANGED_DIR exists
-            if (-not (Test-Path "$env:CHANGED_DIR")) {
-                Write-Host "Directory not found: $env:CHANGED_DIR"
-                exit 0
-            }
+            # Collect changed files recursively
+            $changedFiles = Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object { $_.FullName }
 
-            # Define main Salesforce source directory
-            $sourceRoot = "force-app/main/default"
-            Write-Host "Source root set to: $sourceRoot"
-
-            # Collect all changed files
-            $changedFiles = Get-ChildItem -Recurse -File "$env:CHANGED_DIR"
             if (-not $changedFiles) {
-                Write-Host "No changed files found. Skipping deployment."
+                Write-Host "No files found for deployment. Skipping..."
                 exit 0
             }
 
-            # Ensure meta.xml companions exist for metadata that needs them
             foreach ($file in $changedFiles) {
-                $extension = $file.Extension.ToLower()
-                if ($extension -in @(".cls", ".trigger", ".component", ".page")) {
-                    $metaFile = "$($file.FullName)-meta.xml"
-                    if (-not (Test-Path $metaFile)) {
-                        # Try to locate the meta file from the main source directory
-                        $relativePath = $file.FullName.Replace("$env:CHANGED_DIR\", "")
-                        $sourceMetaFile = Join-Path $sourceRoot ($relativePath + "-meta.xml")
+                Write-Host "Deploying: $file"
 
-                        if (Test-Path $sourceMetaFile) {
-                            $destFolder = Split-Path $metaFile -Parent
-                            if (-not (Test-Path $destFolder)) {
-                                New-Item -ItemType Directory -Force -Path $destFolder | Out-Null
-                            }
-                            Copy-Item $sourceMetaFile $metaFile -Force
-                            Write-Host "Copied missing meta file for $($file.Name)"
-                        } else {
-                            Write-Warning "Meta file not found in source for $($file.Name). Skipping..."
-                        }
-                    }
+                # Try deployment and ignore failures (similar to || true in bash)
+                try {
+                    sf project deploy start `
+                        --source-dir "$file" `
+                        --target-org "$env:ORG_ALIAS" `
+                        --ignore-warnings `
+                        --ignore-errors `
+                        --wait 10 | Out-Host
+                } 
+                catch {
+                    Write-Warning "Deployment failed for $file - continuing..."
                 }
-            }
-
-            # Deploy all changed metadata at once
-            try {
-                Write-Host "Starting deployment from: $env:CHANGED_DIR"
-                sf project deploy start `
-                    --source-dir "$env:CHANGED_DIR" `
-                    --target-org "$env:ORG_ALIAS" `
-                    --ignore-warnings `
-                    --ignore-errors `
-                    --wait 10 | Out-Host
-            }
-            catch {
-                Write-Warning "Deployment encountered errors, but continuing..."
             }
 
             Write-Host "All changed components processed successfully."
