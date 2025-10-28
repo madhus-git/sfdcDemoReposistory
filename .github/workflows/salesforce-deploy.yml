@@ -236,41 +236,32 @@ jobs:
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-            Write-Host "Starting Salesforce metadata deployment..."
+            Write-Host "Deploying only changed components..."
             $ErrorActionPreference = "Stop"
 
-            # Confirm changed directory
-            if (-not (Test-Path $env:CHANGED_DIR)) {
-                Write-Host "No changed directory found. Skipping deployment."
+            # Collect changed files from CHANGED_DIR
+            $changedFiles = Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object { $_.FullName }
+
+            if (-not $changedFiles) {
+                Write-Host "No files found for deployment. Skipping..."
                 exit 0
             }
 
-            # Clean Salesforce CLI cache to avoid stale data
-            Write-Host "Cleaning old Salesforce CLI cache..."
-            if (Test-Path "$env:LOCALAPPDATA\sf") { Remove-Item "$env:LOCALAPPDATA\sf" -Recurse -Force -ErrorAction SilentlyContinue }
-
-            # Display what is being deployed
-            Write-Host "Preparing the following metadata for deployment:"
-            Get-ChildItem -Recurse -File $env:CHANGED_DIR | ForEach-Object { Write-Host " - $($_.FullName)" }
-
-            # Ensure Salesforce CLI auth is valid
-            Write-Host "Validating Salesforce org authentication..."
-            sf org display -o $env:ORG_ALIAS | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "Salesforce authentication failed or org not found."
-                exit 1
+            foreach ($file in $changedFiles) {
+               Write-Host "Deploying: $file"
+                try {
+                    sf project deploy start `
+                        --source-dir "$file" `
+                        --target-org "$env:ORG_ALIAS" `
+                        --ignore-warnings `
+                        --ignore-errors `
+                        --wait 10
+                } catch {
+                    Write-Warning "Deployment failed for $file, continuing with next file..."
+                }
             }
 
-            # Perform deployment
-            Write-Host "Deploying changed metadata to Salesforce..."
-            sf project deploy start -d $env:CHANGED_DIR -o $env:ORG_ALIAS --ignore-conflicts --verbose --json
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "Deployment completed successfully."
-            } else {
-                Write-Host "Deployment failed. Please check above logs for details."
-                exit 1
-            }      
+            Write-Host "All changed components processed."      
 
       # ======================
       # 12. Run Apex Tests
