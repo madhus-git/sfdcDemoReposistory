@@ -166,40 +166,40 @@ jobs:
       - name: Identify changed Salesforce metadata files
         shell: powershell
         run: |
-          Write-Host "🔍 Detecting changed Salesforce metadata files..."
+          Write-Host "Detecting changed Salesforce metadata files..."
           $ErrorActionPreference = "Stop"
 
           $changedDeployDir = "changed-deploy/force-app"
           if (Test-Path $changedDeployDir) { Remove-Item $changedDeployDir -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $changedDeployDir | Out-Null
 
-          # Get changed files between last two commits
+          # Check if previous commit exists
           $hasPrevCommit = git rev-parse "HEAD^" 2>$null
           if ($LASTEXITCODE -eq 0) {
               $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match '^force-app/' }
           } else {
-              Write-Host "🟢 First run — deploying all metadata."
+              Write-Host "First commit detected — deploying all metadata files."
               $changedFiles = git ls-files "force-app/"
           }
 
-          # Check if same files were modified recently (touch-based redeploy)
+          # Fallback if no changed files found
           if (-not $changedFiles) {
-              Write-Host "🟡 No new git changes. Checking file timestamps..."
+              Write-Host "No git-tracked changes found, checking file timestamps..."
               $recent = Get-ChildItem -Recurse -File "force-app" | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) }
               if ($recent) {
-                  Write-Host "Detected recently modified files:"
+                  Write-Host "Detected recently modified files (within 15 min):"
                   $recent | ForEach-Object { Write-Host " - $($_.FullName)" }
                   $changedFiles = $recent.FullName
               }
           }
 
           if (-not $changedFiles) {
-              Write-Host "✅ No changes found. Skipping deployment."
-              echo "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
+              Write-Host "No changes found. Skipping deployment."
+              "CHANGED_DIR=none" | Out-File -FilePath $env:GITHUB_ENV -Append
               exit 0
           }
 
-          Write-Host "📂 Preparing changed files for deployment..."
+          Write-Host "Preparing changed files for deployment..."
           foreach ($file in $changedFiles) {
               if (Test-Path $file) {
                   $dest = Join-Path "changed-deploy" $file
@@ -209,8 +209,8 @@ jobs:
           }
 
           $count = (Get-ChildItem -Recurse -File "changed-deploy").Count
-          Write-Host "✅ $count file(s) prepared for deployment."
-          echo "CHANGED_DIR=changed-deploy/force-app" | Out-File -FilePath $env:GITHUB_ENV -Append        
+          Write-Host "Copied $count file(s) for deployment."
+          "CHANGED_DIR=changed-deploy/force-app" | Out-File -FilePath $env:GITHUB_ENV -Append       
           
       # ======================
       # 10. Preview Deployment Changes
@@ -234,39 +234,40 @@ jobs:
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-            Write-Host "🚀 Deploying changed metadata to Salesforce..."
+            Write-Host "Starting Salesforce metadata deployment..."
             $ErrorActionPreference = "Stop"
 
-            # Clean old cache (optional)
-            $cacheDir = Join-Path $env:USERPROFILE ".sf"
-            if (Test-Path $cacheDir) {
-                Write-Host "🧹 Cleaning Salesforce CLI cache..."
-                Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
+            # Confirm changed directory
+            if (-not (Test-Path $env:CHANGED_DIR)) {
+                Write-Host "No changed directory found. Skipping deployment."
+                exit 0
             }
 
-            # Refresh timestamps so Salesforce re-deploys same files if re-edited
-            Write-Host "⏱️ Touching changed files..."
-            Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object {
-                (Get-Item $_.FullName).LastWriteTime = Get-Date
+            # Clean Salesforce CLI cache to avoid stale data
+            Write-Host "Cleaning old Salesforce CLI cache..."
+            if (Test-Path "$env:LOCALAPPDATA\sf") { Remove-Item "$env:LOCALAPPDATA\sf" -Recurse -Force -ErrorAction SilentlyContinue }
+
+            # Display what is being deployed
+            Write-Host "Preparing the following metadata for deployment:"
+            Get-ChildItem -Recurse -File $env:CHANGED_DIR | ForEach-Object { Write-Host " - $($_.FullName)" }
+
+            # Ensure Salesforce CLI auth is valid
+            Write-Host "Validating Salesforce org authentication..."
+            sf org display -o $env:ORG_ALIAS | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Host "Salesforce authentication failed or org not found."
+                exit 1
             }
 
-            # Attempt deployment
-            Write-Host "⚡ Starting deployment..."
-            $log = "sf-deploy-log.txt"
-            sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org "$env:ORG_ALIAS" --ignore-conflicts --wait 10 --verbose 2>&1 | Tee-Object -FilePath $log
-            $code = $LASTEXITCODE
+            # Perform deployment
+            Write-Host "Deploying changed metadata to Salesforce..."
+            sf project deploy start -d $env:CHANGED_DIR -o $env:ORG_ALIAS --ignore-conflicts --verbose --json
 
-            if ($code -ne 0) {
-                $logData = Get-Content $log -Raw
-                if ($logData -match "NothingToDeploy") {
-                    Write-Host "🔁 Redeploying same files with --force-overwrite..."
-                    sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org "$env:ORG_ALIAS" --ignore-conflicts --force-overwrite --wait 10 --verbose
-                } else {
-                    Write-Error "❌ Deployment failed. Check sf-deploy-log.txt."
-                    exit 1
-                }
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Deployment completed successfully."
             } else {
-                Write-Host "✅ Deployment completed successfully."
+                Write-Host "Deployment failed. Please check above logs for details."
+                exit 1
             }      
 
       # ======================
