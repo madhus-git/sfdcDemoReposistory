@@ -25,52 +25,141 @@ jobs:
           fetch-depth: 0  # Required for git diff to work
 
       # ======================
-      # 2. Install Salesforce CLI (if missing)
+      # 2. Cache Salesforce CLI
       # ======================
-      - name: Install Salesforce CLI
+      - name: Cache Salesforce CLI
+        uses: actions/cache@v4
+        with:
+          path: C:\Users\runneradmin\AppData\Roaming\npm
+          key: ${{ runner.os }}-sfdx-cli    
+
+      # ======================
+      # 3. Install Salesforce CLI & Plugins
+      # ======================
+      - name: Install Pre-requisites
         shell: powershell
         run: |
-          Write-Host "Checking Salesforce CLI installation..."
+          Write-Host "Verifying Git installation..."
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+              Write-Error "Git is not installed or not in PATH."
+              exit 1
+          } else {
+              git --version
+          }
+
+          Write-Host "Checking npm installation..."
+          if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+              Write-Error "npm is not installed. Please install Node.js first."
+              exit 1
+          } else {
+              npm --version
+          }
+
+          Write-Host "Installing or Updating Salesforce CLI..."
           if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
               npm install --global @salesforce/cli@latest
               $npmGlobalPath = (npm root -g).Replace('node_modules', '')
               echo "PATH=$npmGlobalPath;$env:PATH" >> $env:GITHUB_ENV
           } else {
-              Write-Host "Salesforce CLI already installed."
-              sf --version
+              npm update --global @salesforce/cli
+          }
+
+          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
+          try {
+              sf plugins install @salesforce/sfdx-scanner@latest
+          } catch {
+              Write-Warning "Scanner plugin may already exist."
           }
 
       # ======================
-      # 3. Authenticate Salesforce Org (JWT)
+      # 4. Static Code Analysis
+      # ======================
+      - name: Static Code Analyzer
+        id: sca
+        shell: powershell
+        run: |
+          Write-Host "Running Static Code Analysis..."
+          $dateStamp = Get-Date -Format "ddMMyy"
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $htmlDir = "html-report"
+          $htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
+
+          if (Test-Path $htmlDir) { Remove-Item -Recurse -Force $htmlDir }
+          New-Item -ItemType Directory -Path $htmlDir | Out-Null
+          sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "$htmlDir\$htmlReport"
+
+          echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
+
+      # ======================
+      # 5. Upload SCA Report to Nexus
+      # ======================
+      - name: Upload SCA Report to Nexus
+        shell: powershell
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
+        run: |
+          $projectName = "SF-CICD-POC"
+          $branchName  = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $htmlReport = "${{ steps.sca.outputs.report }}"
+          $nexusPath = "$projectName/$branchName/$buildNumber"
+          $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
+          $filePath = "html-report\$htmlReport"
+
+          $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
+          Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
+
+      # ======================
+      # 6. Verify & Write JWT Key File
+      # ======================
+      - name: Verify, Write, Clean & Validate JWT Key File
+        shell: powershell
+        env:
+          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          $keyPath = "C:\actions-runner\_work\jwt.key"
+          Write-Host "Starting JWT key setup..."
+
+          if (-not $env:SF_JWT_KEY_CONTENT) {
+              Write-Error "SF_JWT_KEY secret missing or empty."
+              exit 1
+          }
+
+          if (Test-Path $keyPath) { Remove-Item -Force $keyPath }
+
+          if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
+              $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
+              Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
+          } else {
+              $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
+          }
+
+          if (-not (Test-Path $keyPath)) {
+              Write-Error "JWT key creation failed."
+              exit 1
+          }
+
+          echo "JWT_KEY_FILE=$keyPath" >> $env:GITHUB_ENV
+
+      # ======================
+      # 7. Authenticate Salesforce Org (JWT)
       # ======================
       - name: Authenticate Salesforce Org
         shell: powershell
         env:
-          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
         run: |
-          $keyPath = "C:\actions-runner\_work\jwt.key"
-          if (Test-Path $keyPath) { Remove-Item -Force $keyPath }
-
-          if (-not $env:SF_JWT_KEY_CONTENT) {
-              Write-Error "Missing JWT key secret (SF_JWT_KEY)."
-              exit 1
-          }
-
-          $decoded = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
-          Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
-          echo "JWT_KEY_FILE=$keyPath" >> $env:GITHUB_ENV
-
           sf org login jwt `
             --client-id $env:CONNECTED_APP_CONSUMER_KEY `
-            --jwt-key-file $keyPath `
+            --jwt-key-file $env:JWT_KEY_FILE `
             --username $env:SFDC_USERNAME `
             --alias $env:ORG_ALIAS `
             --instance-url $env:SFDC_HOST
 
       # ======================
-      # 4. Detect Changed Metadata Files
+      # 8. Detect Changed Metadata Files
       # ======================
       - name: Detect Changed Metadata
         id: detect_changes
@@ -111,7 +200,7 @@ jobs:
           echo "CHANGED_DIR=$changedDir" >> $env:GITHUB_ENV
 
       # ======================
-      # 5. Preview Changes (if changed)
+      # 9. Preview Changes (if changed)
       # ======================
       - name: Preview Deployment
         if: env.CHANGED == 'true'
@@ -121,7 +210,7 @@ jobs:
           sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS --ignore-conflicts
 
       # ======================
-      # 6. Deploy Changed Components (if changed)
+      # 10. Deploy Changed Components (if changed)
       # ======================
       - name: Deploy Changed Metadata
         if: env.CHANGED == 'true'
@@ -136,7 +225,7 @@ jobs:
             --wait 10
 
       # ======================
-      # 7. Run Apex Tests (if changed)
+      # 11. Run Apex Tests (if changed)
       # ======================
       - name: Run Apex Tests
         if: env.CHANGED == 'true'
@@ -153,7 +242,7 @@ jobs:
           path: test-results/**/*.xml
 
       # ======================
-      # 8. Cleanup
+      # 12. Cleanup
       # ======================
       - name: Cleanup
         if: always()
