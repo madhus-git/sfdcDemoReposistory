@@ -173,20 +173,20 @@ jobs:
           if (Test-Path $changedDeployDir) { Remove-Item -Recurse -Force $changedDeployDir }
           New-Item -ItemType Directory -Force -Path $changedDeployDir | Out-Null
 
-          # Compare latest commits
+          # Detect files changed between commits
           $hasPrevCommit = git rev-parse "HEAD^" 2>$null
           if ($LASTEXITCODE -eq 0) {
               $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match '^force-app/' }
           } else {
-              Write-Host "First run — deploying all metadata."
+              Write-Host "First run detected - deploying all metadata."
               $changedFiles = git ls-files "force-app/"
           }
 
           if (-not $changedFiles) {
-              Write-Host "No Git changes found. Checking timestamps..."
+              Write-Host "No Git-based changes found. Checking timestamps..."
               $recent = Get-ChildItem -Recurse -File "force-app" | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) }
               if ($recent) {
-                  Write-Host "Detected recently modified files:"
+                  Write-Host "Recently modified files detected:"
                   $recent | ForEach-Object { Write-Host " - $($_.FullName)" }
                   $changedFiles = $recent.FullName
               }
