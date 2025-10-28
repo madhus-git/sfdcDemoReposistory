@@ -239,57 +239,57 @@ jobs:
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-          Write-Host 'Deploying changed metadata to Salesforce...'
-          $ErrorActionPreference = 'Stop'
+          Write-Host "Deploying changed metadata to Salesforce..."
+          $ErrorActionPreference = "Stop"
 
           # --- Clean CLI cache ---
-          $cacheDir = Join-Path $env:USERPROFILE '.sf'
+          $cacheDir = Join-Path $env:USERPROFILE ".sf"
           if (Test-Path $cacheDir) {
-              Write-Host 'Cleaning old Salesforce CLI cache...'
+              Write-Host "Cleaning old Salesforce CLI cache..."
               Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
           }
 
           # --- Refresh timestamps ---
-          Write-Host 'Touching changed files to refresh timestamps...'
+          Write-Host "Touching changed files to refresh timestamps..."
           Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object {
               (Get-Item $_.FullName).LastWriteTime = Get-Date
           }
 
           # --- Start deployment ---
-          Write-Host 'Starting deployment...'
-          $logFile = 'sf-deploy-log.txt'
-          sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org $env:ORG_ALIAS --ignore-conflicts --wait 10 --verbose 2>&1 | Tee-Object -FilePath $logFile
+          Write-Host "Starting deployment..."
+          $logFile = "sf-deploy-log.txt"
+          sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org "$env:ORG_ALIAS" --ignore-conflicts --wait 10 --verbose 2>&1 | Tee-Object -FilePath $logFile
           $exitCode = $LASTEXITCODE
 
           if ($exitCode -ne 0) {
-              Write-Warning "Deployment exited with code $exitCode — checking if NothingToDeploy..."
+              Write-Warning "Deployment exited with code $exitCode - checking if NothingToDeploy..."
               $logContent = Get-Content $logFile -Raw
 
-              if ($logContent -match 'NothingToDeploy') {
-                  Write-Host 'No deployable changes detected. Attempting forced redeploy...'
-                  
-                  $tempDir = 'redeploy-temp'
+              if ($logContent -match "NothingToDeploy") {
+                  Write-Host "No deployable changes detected. Attempting forced redeploy..."
+
+                  $tempDir = "redeploy-temp"
                   if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
-                  Copy-Item -Path $env:CHANGED_DIR -Destination $tempDir -Recurse
+                  Copy-Item -Path "$env:CHANGED_DIR" -Destination $tempDir -Recurse
 
                   Get-ChildItem -Recurse -File $tempDir | ForEach-Object {
                       (Get-Item $_.FullName).LastWriteTime = Get-Date
                   }
 
-                  sf project deploy start --source-dir $tempDir --target-org $env:ORG_ALIAS --ignore-conflicts --wait 10 --verbose
+                  sf project deploy start --source-dir "$tempDir" --target-org "$env:ORG_ALIAS" --ignore-conflicts --wait 10 --verbose
                   if ($LASTEXITCODE -eq 0) {
-                      Write-Host 'Forced redeploy completed successfully.'
+                      Write-Host "Forced redeploy completed successfully."
                   } else {
-                      Write-Error 'Forced redeploy also failed. Check sf-deploy-log.txt for details.'
+                      Write-Error "Forced redeploy also failed. Check sf-deploy-log.txt for details."
                       exit 1
                   }
               } else {
-                  Write-Error 'Deployment failed for reasons other than NothingToDeploy.'
+                  Write-Error "Deployment failed for reasons other than NothingToDeploy."
                   Get-Content $logFile
                   exit 1
               }
           } else {
-              Write-Host 'Deployment completed successfully.'
+              Write-Host "Deployment completed successfully."
           }       
 
       # ======================
