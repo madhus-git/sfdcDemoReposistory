@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Required for git diff to work
+          fetch-depth: 0
 
       # ======================
       # 2. Cache Salesforce CLI
@@ -37,7 +37,7 @@ jobs:
       # 3. Install Salesforce CLI & Plugins (Fixed)
       # ======================
       - name: Install Pre-requisites
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Verifying Git installation..."
           if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
@@ -56,23 +56,21 @@ jobs:
           }
 
           Write-Host "Installing or Updating Salesforce CLI..."
-          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-              npm install --global @salesforce/cli@latest
-          } else {
-              npm update --global @salesforce/cli
-          }
+          npm install --global @salesforce/cli@latest
 
-          # Detect sf.cmd path and add to PATH dynamically
-          Write-Host "Locating Salesforce CLI binary..."
-          $sfPath = (Get-ChildItem -Path "C:\Users" -Recurse -Filter "sf.cmd" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
-          if ($sfPath) {
-              $sfDir = Split-Path $sfPath
-              Write-Host "Found sf at: $sfDir"
-              echo "PATH=$sfDir;$env:PATH" >> $env:GITHUB_ENV
-          } else {
-              Write-Warning "sf.cmd not found in expected directories. CLI may not be accessible globally."
-          }    
-          
+          # ✅ FIX: Add npm global paths to PATH for current job
+          $npmGlobalBin = (npm config get prefix) + "\node_modules\.bin"
+          $userNpmPath = "$env:APPDATA\npm"
+
+          Write-Host "Adding npm global paths to PATH..."
+          Write-Host "  $npmGlobalBin"
+          Write-Host "  $userNpmPath"
+          echo "$npmGlobalBin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "$userNpmPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          Write-Host "Verifying Salesforce CLI installation..."
+          sf --version
+
           Write-Host "Installing Required Salesforce Plugins..."
           try {
               sf plugins install @salesforce/sfdx-scanner@latest
@@ -90,11 +88,11 @@ jobs:
           sf plugins list
 
       # ======================
-      # 4. Static Code Analysis (Fixed)
+      # 4. Static Code Analysis
       # ======================
       - name: Static Code Analyzer
         id: sca
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Running Static Code Analysis..."
           $dateStamp = Get-Date -Format "ddMMyy"
@@ -105,16 +103,14 @@ jobs:
           if (Test-Path $htmlDir) { Remove-Item -Recurse -Force $htmlDir }
           New-Item -ItemType Directory -Path $htmlDir | Out-Null
 
-          # Run Code Analyzer (new plugin)
           sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "$htmlDir\$htmlReport"
-
           echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
 
       # ======================
       # 5. Upload SCA Report to Nexus
       # ======================
       - name: Upload SCA Report to Nexus
-        shell: powershell
+        shell: pwsh
         env:
           NEXUS_USER: ${{ secrets.NEXUS_USER }}
           NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
@@ -135,7 +131,7 @@ jobs:
       # 6. Verify & Write JWT Key File
       # ======================
       - name: Verify, Write, Clean & Validate JWT Key File
-        shell: powershell
+        shell: pwsh
         env:
           SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
         run: |
@@ -167,7 +163,7 @@ jobs:
       # 7. Authenticate Salesforce Org (JWT)
       # ======================
       - name: Authenticate Salesforce Org
-        shell: powershell
+        shell: pwsh
         env:
           CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
           SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
@@ -185,7 +181,7 @@ jobs:
       # ======================
       - name: Detect Changed Metadata
         id: detect_changes
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Detecting changed Salesforce metadata files..."
           $ErrorActionPreference = "Stop"
@@ -225,7 +221,7 @@ jobs:
       # ======================
       - name: Preview Deployment
         if: env.CHANGED == 'true'
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Previewing changes before deployment..."
           sf project deploy preview --source-dir $env:CHANGED_DIR --target-org $env:ORG_ALIAS --ignore-conflicts
@@ -235,7 +231,7 @@ jobs:
       # ======================
       - name: Deploy Changed Metadata
         if: env.CHANGED == 'true'
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Deploying changed Salesforce metadata..."
           sf project deploy start `
@@ -250,7 +246,7 @@ jobs:
       # ======================
       - name: Run Apex Tests
         if: env.CHANGED == 'true'
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Running Apex Unit Tests..."
           sf apex run test --target-org $env:ORG_ALIAS --result-format junit --output-dir test-results --wait 10
@@ -267,7 +263,7 @@ jobs:
       # ======================
       - name: Cleanup
         if: always()
-        shell: powershell
+        shell: pwsh
         run: |
           Write-Host "Cleaning up temporary files..."
           if (Test-Path 'changed-deploy') { Remove-Item -Recurse -Force 'changed-deploy' }
