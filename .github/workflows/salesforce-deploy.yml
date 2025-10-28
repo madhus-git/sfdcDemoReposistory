@@ -166,48 +166,58 @@ jobs:
       - name: Identify changed Salesforce metadata files
         shell: powershell
         run: |
-          Write-Host 'Identifying changed Salesforce metadata files...'
+          Write-Host '🔍 Identifying changed Salesforce metadata files...'
           $ErrorActionPreference = 'Stop'
 
-          $changedDeployPath = 'changed-deploy/force-app/main/default'
+          $changedDeployPath = 'changed-deploy/force-app'
           if (Test-Path $changedDeployPath) { Remove-Item $changedDeployPath -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $changedDeployPath | Out-Null
 
-          # Get changed files (compare last commit with previous one)
+          # Get changed files compared to previous commit (handles new and updated)
           $hasPrevCommit = git rev-parse 'HEAD^' 2>$null
           if ($LASTEXITCODE -eq 0) {
               $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match '^force-app/' }
           } else {
-              Write-Host 'First commit — taking all metadata files.'
+              Write-Host 'First commit — deploying all metadata files.'
               $changedFiles = git ls-files 'force-app/'
           }
 
+          # If no changed files, check if same files modified by timestamp or line change
           if (-not $changedFiles) {
-              Write-Host 'No changes detected. Skipping deployment.'
+              Write-Host '🟡 No git-tracked changes found, checking for re-touched files...'
+              $recentFiles = Get-ChildItem -Recurse -File 'force-app' | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) }
+              if ($recentFiles) {
+                  $changedFiles = $recentFiles.FullName
+                  Write-Host "Detected recent modifications on same files."
+              }
+          }
+
+          if (-not $changedFiles) {
+              Write-Host '✅ No changes detected. Skipping deployment.'
               Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=none'
               exit 0
           }
 
-          Write-Host 'Changed files:'
-          $changedFiles | ForEach-Object { Write-Host $_ }
+          Write-Host '📂 Changed files to be deployed:'
+          $changedFiles | ForEach-Object { Write-Host " - $_" }
 
           foreach ($file in $changedFiles) {
-            if (Test-Path $file) {
-                $destPath = Join-Path 'changed-deploy' $file
-                New-Item -ItemType Directory -Force -Path (Split-Path $destPath) | Out-Null
-                Copy-Item $file $destPath -Force
-            }
+              if (Test-Path $file) {
+                  $destPath = Join-Path 'changed-deploy' $file
+                  New-Item -ItemType Directory -Force -Path (Split-Path $destPath) | Out-Null
+                  Copy-Item $file $destPath -Force
+              }
           }
 
-          $copiedFiles = (Get-ChildItem -Recurse -File changed-deploy | Measure-Object).Count
+          $copiedFiles = (Get-ChildItem -Recurse -File 'changed-deploy' | Measure-Object).Count
           if ($copiedFiles -eq 0) {
-              Write-Host 'No deployable files copied.'
+              Write-Host '⚠️ No deployable files copied.'
               Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=none'
               exit 0
           }
 
-          Write-Host "Copied $copiedFiles changed files into changed-deploy directory."
-          Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=changed-deploy/force-app/main/default'        
+          Write-Host "✅ Copied $copiedFiles changed files into changed-deploy directory."
+          Add-Content -Path $env:GITHUB_ENV -Value 'CHANGED_DIR=changed-deploy/force-app'        
           
       # ======================
       # 10. Preview Deployment Changes
@@ -239,59 +249,48 @@ jobs:
         if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-          Write-Host "Deploying changed metadata to Salesforce..."
+          Write-Host "🚀 Deploying changed metadata to Salesforce..."
           $ErrorActionPreference = "Stop"
 
-          # --- Clean Salesforce CLI cache ---
+          # Clean Salesforce CLI cache
           $cacheDir = Join-Path $env:USERPROFILE ".sf"
           if (Test-Path $cacheDir) {
-              Write-Host "Cleaning old Salesforce CLI cache..."
+              Write-Host "🧹 Cleaning old Salesforce CLI cache..."
               Remove-Item -Recurse -Force "$cacheDir" -ErrorAction SilentlyContinue
           }
 
-          # --- Refresh timestamps ---
-          Write-Host "Touching changed files to refresh timestamps..."
+          # Refresh timestamps (ensures re-deploys of same files)
+          Write-Host "⏱️ Refreshing timestamps for changed files..."
           Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object {
               (Get-Item $_.FullName).LastWriteTime = Get-Date
           }
 
-          # --- Start deployment ---
-          Write-Host "Starting deployment..."
+          # Start deployment
+          Write-Host "⚡ Starting deployment..."
           $logFile = "sf-deploy-log.txt"
           sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org "$env:ORG_ALIAS" --ignore-conflicts --wait 10 --verbose 2>&1 | Tee-Object -FilePath $logFile
           $exitCode = $LASTEXITCODE
 
           if ($exitCode -ne 0) {
-              Write-Warning "Deployment exited with code $exitCode - checking if NothingToDeploy..."
+              Write-Warning "⚠️ Deployment exited with code $exitCode - checking for NothingToDeploy..."
               $logContent = Get-Content $logFile -Raw
 
               if ($logContent -match "NothingToDeploy") {
-                  Write-Host "No deployable changes detected. Forcing redeploy with overwrite..."
-
-                  $tempDir = "redeploy-temp"
-                  if (Test-Path $tempDir) { Remove-Item -Recurse -Force $tempDir }
-                  Copy-Item -Path "$env:CHANGED_DIR" -Destination $tempDir -Recurse
-
-                  # Touch files again
-                  Get-ChildItem -Recurse -File $tempDir | ForEach-Object {
-                      (Get-Item $_.FullName).LastWriteTime = Get-Date
-                  }
-
-                  # Force overwrite redeploy
-                  sf project deploy start --source-dir "$tempDir" --target-org "$env:ORG_ALIAS" --ignore-conflicts --force-overwrite --wait 10 --verbose
+                  Write-Host "🔁 Forcing redeploy with overwrite (same file detected)..."
+                  sf project deploy start --source-dir "$env:CHANGED_DIR" --target-org "$env:ORG_ALIAS" --ignore-conflicts --force-overwrite --wait 10 --verbose
                   if ($LASTEXITCODE -eq 0) {
-                      Write-Host "Forced redeploy completed successfully."
+                      Write-Host "✅ Forced redeploy completed successfully."
                   } else {
-                      Write-Error "Forced redeploy failed. Check sf-deploy-log.txt for details."
+                      Write-Error "❌ Forced redeploy failed. Check sf-deploy-log.txt for details."
                       exit 1
                   }
               } else {
-                  Write-Error "Deployment failed for reasons other than NothingToDeploy."
+                  Write-Error "❌ Deployment failed for other reasons. Review logs below:"
                   Get-Content $logFile
                   exit 1
               }
           } else {
-              Write-Host "Deployment completed successfully."
+              Write-Host "✅ Deployment completed successfully."
           }      
 
       # ======================
