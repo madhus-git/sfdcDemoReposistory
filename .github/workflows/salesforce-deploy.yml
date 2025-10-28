@@ -5,120 +5,298 @@ on:
   push:
     branches:
       - main
-      - githubcicd
       - feature/**
 
 jobs:
   salesforce-deploy:
     name: Salesforce CI/CD
-    runs-on: self-hosted  # Windows self-hosted runner
-
+    runs-on: self-hosted
     env:
       SFDC_HOST: "https://login.salesforce.com"
       ORG_ALIAS: "projectdemosfdc"
+      NEXUS_URL: "http://localhost:8081/repository/StaticCodeAnalysisReports"
 
     steps:
-      - name: Checkout repository
+      # ======================
+      # 1. Checkout Repository (Fixed fetch-depth)
+      # ======================
+      - name: Checkout Source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Ensures full history so git diff works properly
 
-      # ---------------------------------------------------------
-      # Step 1: Verify Git & npm
-      # ---------------------------------------------------------
-      - name: Verify Git and npm installation
+      # ======================
+      # 2. Cache Salesforce CLI
+      # ======================
+      - name: Cache Salesforce CLI
+        uses: actions/cache@v4
+        with:
+          path: C:\Users\runneradmin\AppData\Roaming\npm
+          key: ${{ runner.os }}-sfdx-cli
+
+      # ======================
+      # 3. Install Salesforce CLI & Plugins
+      # ======================
+      - name: Install Pre-requisites
         shell: powershell
         run: |
           Write-Host "Verifying Git installation..."
-          git --version
-          Write-Host "Checking npm installation..."
-          npm --version
-
-      # ---------------------------------------------------------
-      # Step 2: Install Salesforce CLI (NetworkService compatible)
-      # ---------------------------------------------------------
-      - name: Install or Update Salesforce CLI (NetworkService compatible)
-        shell: powershell
-        run: |
-          Write-Host "Installing Salesforce CLI for NetworkService user..."
-
-          # Create writable npm global directory
-          $npmGlobal = "C:\actions-runner\_work\npm-global"
-          if (!(Test-Path $npmGlobal)) {
-            New-Item -ItemType Directory -Path $npmGlobal | Out-Null
-          }
-
-          # Configure npm to use this prefix
-          npm config set prefix $npmGlobal
-
-          # Install Salesforce CLI
-          npm install -g @salesforce/cli
-
-          # Add CLI path to PATH for both session and workflow
-          $sfBinPath = "$npmGlobal\node_modules\.bin"
-          Write-Host "Adding $sfBinPath to PATH..."
-          $env:Path = "$sfBinPath;$env:Path"
-          echo "$sfBinPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-          # Refresh PowerShell session (important for NetworkService)
-          Write-Host "Refreshing PowerShell session environment..."
-          [Environment]::SetEnvironmentVariable('Path', $env:Path, 'Process')
-
-          # Verify CLI installation
-          Write-Host "Verifying Salesforce CLI installation..."
-          Get-Command sf -ErrorAction SilentlyContinue
-          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
-              Write-Error "Salesforce CLI (sf) not found in PATH. Aborting."
-              Get-ChildItem $sfBinPath
+          if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+              Write-Error "Git is not installed or not in PATH."
               exit 1
+          } else {
+              git --version
           }
 
-          sf --version
-          sf plugins list
+          Write-Host "Checking npm installation..."
+          if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+              Write-Error "npm is not installed. Please install Node.js first."
+              exit 1
+          } else {
+              npm --version
+          }
 
-      # ---------------------------------------------------------
-      # Step 3: Install Required Salesforce Plugins
-      # ---------------------------------------------------------
-      - name: Install Salesforce Plugins
-        shell: powershell
-        run: |
-          Write-Host "Installing required Salesforce plugins..."
-          sf plugins install @salesforce/sfdx-scanner || Write-Host "⚠️ Scanner plugin may already exist."
-          sf plugins install @salesforce/code-analyzer || Write-Host "⚠️ Code Analyzer plugin may already exist."
-          sf plugins list
+          Write-Host "Installing or Updating Salesforce CLI..."
+          if (-not (Get-Command sf -ErrorAction SilentlyContinue)) {
+              npm install --global @salesforce/cli@latest
+              $npmGlobalPath = (npm root -g).Replace('node_modules', '')
+              echo "PATH=$npmGlobalPath;$env:PATH" >> $env:GITHUB_ENV
+          } else {
+              npm update --global @salesforce/cli
+          }
 
-      # ---------------------------------------------------------
-      # 🧩 Step 4: Run Static Code Analysis
-      # ---------------------------------------------------------
-      - name: Run Static Code Analysis
+          Write-Host "Installing or Updating Salesforce Scanner Plugin..."
+          try {
+              sf plugins install @salesforce/sfdx-scanner@latest
+          } catch {
+              Write-Warning "Scanner plugin may already exist."
+          }
+
+      # ======================
+      # 4. Static Code Analysis
+      # ======================
+      - name: Static Code Analyzer
+        id: sca
         shell: powershell
         run: |
           Write-Host "Running Static Code Analysis..."
-          sf code-analyzer run --workspace force-app --rule-selector Recommended --format table
+          $dateStamp = Get-Date -Format "ddMMyy"
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $htmlDir = "html-report"
+          $htmlReport = "CodeAnalyzerReport_${dateStamp}_${buildNumber}.html"
 
-      # ---------------------------------------------------------
-      # 🧩 Step 5: Deploy only changed metadata to Salesforce
-      # ---------------------------------------------------------
+          if (Test-Path $htmlDir) { Remove-Item -Recurse -Force $htmlDir }
+          New-Item -ItemType Directory -Path $htmlDir | Out-Null
+          sf code-analyzer run --workspace force-app --rule-selector Recommended --output-file "$htmlDir\$htmlReport"
+
+          echo "report=$htmlReport" >> $env:GITHUB_OUTPUT
+
+      # ======================
+      # 5. Upload SCA Report to Nexus
+      # ======================
+      - name: Upload SCA Report to Nexus
+        shell: powershell
+        env:
+          NEXUS_USER: ${{ secrets.NEXUS_USER }}
+          NEXUS_PASS: ${{ secrets.NEXUS_PASS }}
+        run: |
+          $projectName = "SF-CICD-POC"
+          $branchName  = $env:GITHUB_REF_NAME -replace '[^\w\-.]', '_'
+          $buildNumber = $env:GITHUB_RUN_NUMBER
+          $htmlReport = "${{ steps.sca.outputs.report }}"
+          $nexusPath = "$projectName/$branchName/$buildNumber"
+          $url = "$env:NEXUS_URL/$nexusPath/$htmlReport"
+          $filePath = "html-report\$htmlReport"
+
+          $base64Auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:NEXUS_USER`:$env:NEXUS_PASS"))
+          Invoke-WebRequest -Uri $url -Method Put -InFile $filePath -Headers @{Authorization = "Basic $base64Auth"} -UseBasicParsing
+
+      # ======================
+      # 7. Verify & Write JWT Key File
+      # ======================
+      - name: Verify, Write, Clean & Validate JWT Key File
+        shell: powershell
+        env:
+          SF_JWT_KEY_CONTENT: ${{ secrets.SF_JWT_KEY }}
+        run: |
+          $keyPath = "C:\actions-runner\_work\jwt.key"
+          Write-Host "Starting JWT key setup..."
+
+          if (-not $env:SF_JWT_KEY_CONTENT) {
+              Write-Error "SF_JWT_KEY secret missing or empty."
+              exit 1
+          }
+
+          if (Test-Path $keyPath) { Remove-Item -Force $keyPath }
+
+          if ($env:SF_JWT_KEY_CONTENT -match "^[A-Za-z0-9+/=]+$" -and $env:SF_JWT_KEY_CONTENT.Length -gt 300) {
+              $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:SF_JWT_KEY_CONTENT))
+              Set-Content -Path $keyPath -Value $decoded -Encoding UTF8
+          } else {
+              $env:SF_JWT_KEY_CONTENT | Out-File -FilePath $keyPath -Encoding UTF8
+          }
+
+          if (-not (Test-Path $keyPath)) {
+              Write-Error "JWT key creation failed."
+              exit 1
+          }
+
+          echo "JWT_KEY_FILE=$keyPath" >> $env:GITHUB_ENV
+
+      # ======================
+      # 8. Authenticate Salesforce Org
+      # ======================
+      - name: Authenticate Salesforce Org
+        shell: powershell
+        env:
+          CONNECTED_APP_CONSUMER_KEY: ${{ secrets.SF_CONSUMER_KEY }}
+          SFDC_USERNAME: ${{ secrets.SF_USERNAME }}
+        run: |
+          sf org login jwt `
+            --client-id $env:CONNECTED_APP_CONSUMER_KEY `
+            --jwt-key-file $env:JWT_KEY_FILE `
+            --username $env:SFDC_USERNAME `
+            --alias $env:ORG_ALIAS `
+            --instance-url $env:SFDC_HOST
+
+      # ======================
+      # 9. Identify Changed Components (Updated for same-file redeploys)
+      # ======================
+      - name: Identify changed Salesforce metadata files
+        shell: powershell
+        run: |
+          Write-Host "Detecting changed Salesforce metadata files..."
+          $ErrorActionPreference = "Stop"
+
+          $changedDeployDir = "changed-deploy/force-app"
+          if (Test-Path $changedDeployDir) { Remove-Item -Recurse -Force $changedDeployDir }
+          New-Item -ItemType Directory -Force -Path $changedDeployDir | Out-Null
+
+          # Detect files changed between commits
+          $hasPrevCommit = git rev-parse "HEAD^" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+              $changedFiles = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match '^force-app/' }
+          } else {
+              Write-Host "First run detected - deploying all metadata."
+              $changedFiles = git ls-files "force-app/"
+          }
+
+          if (-not $changedFiles) {
+              Write-Host "No Git-based changes found. Checking timestamps..."
+              $recent = Get-ChildItem -Recurse -File "force-app" | Where-Object { $_.LastWriteTime -gt (Get-Date).AddMinutes(-15) }
+              if ($recent) {
+                  Write-Host "Recently modified files detected:"
+                  $recent | ForEach-Object { Write-Host " - $($_.FullName)" }
+                  $changedFiles = $recent.FullName
+              }
+          }
+
+          if (-not $changedFiles) {
+              Write-Host "No changed metadata detected. Skipping deployment."
+              'CHANGED_DIR=none' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              exit 0
+          }
+
+          Write-Host "Preparing changed metadata files for deployment..."
+          foreach ($file in $changedFiles) {
+              if (Test-Path $file) {
+                  $dest = Join-Path "changed-deploy" $file
+                  New-Item -ItemType Directory -Force -Path (Split-Path $dest) | Out-Null
+                  Copy-Item $file $dest -Force
+              }
+          }
+
+          $count = (Get-ChildItem -Recurse -File "changed-deploy").Count
+          Write-Host "$count file(s) prepared for deployment."
+          'CHANGED_DIR=changed-deploy/force-app' | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append       
+          
+      # ======================
+      # 10. Preview Deployment Changes
+      # ======================
+      - name: Preview Deployment Changes
+        if: env.CHANGED_DIR != 'none' && env.CHANGED_DIR != ''
+        shell: powershell
+        run: |
+          Write-Host "Previewing deployment..."
+          if (-not $env:CHANGED_DIR -or $env:CHANGED_DIR -eq 'none') {
+              Write-Host "No changes to preview. Skipping..."
+              exit 0
+          }
+
+          $srcDir = $env:CHANGED_DIR
+          $org = $env:ORG_ALIAS
+          Write-Host "Previewing deployment for source: $srcDir"
+          sf project deploy preview --source-dir $srcDir --target-org $org --ignore-conflicts --json    
+          
+      # ======================
+      # 11. Deploy Changed Components
+      # ======================
       - name: Deploy changed metadata to Salesforce
+        if: env.CHANGED_DIR != 'none'
         shell: powershell
         run: |
-          Write-Host "🚀 Detecting changed files..."
-          $CHANGED_FILES = git diff --name-only HEAD^ HEAD | Where-Object { $_ -match 'force-app' }
+            Write-Host "Deploying only changed components..."
+            $ErrorActionPreference = "Stop"
 
-          if (-not $CHANGED_FILES) {
-            Write-Host "✅ No changed metadata found. Skipping deployment."
-            exit 0
-          }
+            # Collect changed files from CHANGED_DIR
+            $changedFiles = Get-ChildItem -Recurse -File "$env:CHANGED_DIR" | ForEach-Object { $_.FullName }
 
-          Write-Host "🚀 Deploying only changed components..."
-          foreach ($file in $CHANGED_FILES) {
-            Write-Host "Deploying: $file"
-            sf project deploy start --source-dir "$file" --target-org $env:ORG_ALIAS --ignore-warnings --ignore-errors || Write-Host "⚠️ Deployment warning ignored."
-          }
+            if (-not $changedFiles) {
+                Write-Host "No files found for deployment. Skipping..."
+                exit 0
+            }
 
-      # ---------------------------------------------------------
-      # 🧩 Step 6: Post-deployment verification
-      # ---------------------------------------------------------
-      - name: Verify deployment success
+            foreach ($file in $changedFiles) {
+               Write-Host "Deploying: $file"
+                try {
+                    sf project deploy start `
+                        --source-dir "$file" `
+                        --target-org "$env:ORG_ALIAS" `
+                        --ignore-warnings `
+                        --ignore-errors `
+                        --wait 10
+                } catch {
+                    Write-Warning "Deployment failed for $file, continuing with next file..."
+                }
+            }
+
+            Write-Host "All changed components processed."      
+
+      # ======================
+      # 12. Run Apex Tests
+      # ======================
+      - name: Cleanup temporary folders
+        if: always()
         shell: powershell
         run: |
-          Write-Host "Verifying deployment status..."
-          sf project deploy report
+          Write-Host "Cleaning up temporary directories..."
+          if (Test-Path 'changed-deploy') { Remove-Item -Recurse -Force 'changed-deploy' }
+          if (Test-Path 'redeploy-temp') { Remove-Item -Recurse -Force 'redeploy-temp' }
+
+      # ======================
+      # 13. Run Apex Tests
+      # ======================
+      - name: Run Apex Unit Tests
+        if: env.CHANGED_DIR != 'none'
+        shell: powershell
+        run: |
+          Write-Host "Running Apex Unit Tests..."
+          New-Item -ItemType Directory -Path "test-results" -Force | Out-Null
+          sf apex run test --target-org $env:ORG_ALIAS --result-format junit --output-dir test-results --wait 10
+
+      - name: Publish Apex Test Results
+        if: env.CHANGED_DIR != 'none'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Apex-Test-Results
+          path: test-results/**/*.xml
+
+      # ======================
+      # 14. Cleanup Workspace
+      # ======================
+      - name: Cleanup Workspace
+        shell: powershell
+        run: |
+          Write-Host "Cleaning workspace..."
+          $keyPath = "C:\actions-runner\_work\jwt.key"
+          if (Test-Path $keyPath) { Remove-Item -Force $keyPath }
