@@ -282,8 +282,9 @@ jobs:
                         --ignore-warnings `
                         --ignore-errors `
                         --wait 10 | Out-Host
-                    } catch {
-                    Write-Warning "Deployment failed for $file — continuing..."
+                } 
+                catch {
+                    Write-Warning "Deployment failed for $file - continuing..."
                 }
             }
 
